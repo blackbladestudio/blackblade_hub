@@ -1,7 +1,7 @@
 {
-  "name": "studio-hub",
+  "name": "blackblade-hub",
   "version": "1.0.0",
-  "description": "工作室统一工作台 - Jenkins / Horde / UGS / 环境配置",
+  "description": "BlackBlade Hub - 工作室统一工作台",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
@@ -9,8 +9,8 @@
     "pack": "electron-builder --dir"
   },
   "build": {
-    "appId": "com.studiohub.app",
-    "productName": "Studio Hub",
+    "appId": "com.blackblade.hub",
+    "productName": "BlackBlade Hub",
     "directories": {
       "output": "dist"
     },

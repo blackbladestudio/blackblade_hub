@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Studio Hub</title>
+  <title>BlackBlade Hub</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
@@ -58,6 +58,7 @@
     #startup-overlay.hidden {
       opacity: 0;
       visibility: hidden;
+      pointer-events: none;
     }
     .splash-logo {
       font-size: 42px;
@@ -447,6 +448,12 @@
       animation: slideUp 0.5s ease 2.2s forwards;
     }
 
+    #toolbox-zone {
+      padding: 0 28px 20px;
+      opacity: 0;
+      animation: slideUp 0.5s ease 2.3s forwards;
+    }
+
     .pipeline-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
@@ -475,6 +482,40 @@
       cursor: not-allowed;
     }
     .pipeline-card.disabled:hover { transform: none; box-shadow: none; }
+    .pipeline-card.installing {
+      padding-bottom: 36px;
+      cursor: not-allowed;
+    }
+    .pipeline-card.installing:hover { transform: none; box-shadow: none; }
+    .card-progress {
+      display: none;
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 0 18px 10px;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .card-progress.visible { display: flex; }
+    .card-progress-label {
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.3px;
+    }
+    .card-progress-track {
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .card-progress-fill {
+      height: 100%;
+      background: var(--green);
+      border-radius: 2px;
+      width: 0%;
+      transition: width 0.4s ease;
+    }
     .pipeline-card-icon {
       width: 38px;
       height: 38px;
@@ -515,10 +556,114 @@
     .pipeline-status-dot.warning { background: var(--gold); }
     .pipeline-status-dot.error   { background: var(--danger); }
 
+    /* ─── PAGE NAVIGATION ─── */
+    .page-hidden { display: none !important; }
+    #horde-page {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      padding: 20px 28px;
+      -webkit-app-region: no-drag;
+    }
+    .page-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .page-back {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--font);
+      font-size: 14px;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .page-back:hover { border-color: var(--blue); color: var(--blue); }
+    .page-title {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: var(--text);
+    }
+    .page-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .ha-status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .ha-big-status {
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .ha-big-status.warning { color: var(--gold); }
+    .ha-big-status.running { color: var(--green); }
+    .ha-big-status.installed { color: var(--blue); }
+    .ha-big-actions { display: flex; gap: 10px; }
+    .ha-btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      font-family: var(--font);
+    }
+    .ha-btn:hover { opacity: 0.85; }
+    .ha-btn-primary { background: var(--gold); color: #0a0704; }
+    .ha-btn-start { background: var(--green); color: #0a0704; }
+    .ha-btn-stop { background: var(--danger); color: #fff; }
+    .ha-details {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 20px 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .ha-detail-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+    }
+    .ha-detail-label { color: var(--muted); }
+    .ha-detail-value { color: var(--text); font-family: monospace; }
+    .btn-log {
+      margin-left: auto;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 2px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: var(--font);
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-log:hover { border-color: var(--blue); color: var(--blue); }
+
     /* ─── STATUS BAR ─── */
     #status-bar {
       position: relative;
-      z-index: 10;
+      z-index: 200;
       border-top: 1px solid var(--border);
       padding: 8px 28px;
       display: flex;
@@ -792,6 +937,62 @@
       transform: translateX(-50%) translateY(0);
     }
 
+    /* ─── Log Panel ─── */
+    #log-panel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 280px;
+      background: var(--surface);
+      border-top: 1px solid var(--border-glow);
+      display: none;
+      flex-direction: column;
+      z-index: 8000;
+    }
+    #log-panel.visible {
+      display: flex;
+    }
+    .log-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+    }
+    #log-title {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: var(--text);
+    }
+    .log-close {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 14px;
+      padding: 4px 8px;
+    }
+    .log-close:hover { color: var(--danger); }
+    #log-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 16px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-all;
+      user-select: text;
+      cursor: text;
+    }
+    #log-content .log-stdout { color: var(--text); }
+    #log-content .log-stderr { color: var(--danger); }
+    #log-content .log-info { color: var(--blue); }
+    #log-content .log-error { color: var(--danger); font-weight: 600; }
+
     /* ─── Click ripple ─── */
     .ripple {
       position: absolute;
@@ -810,7 +1011,7 @@
 
 <!-- Startup Overlay -->
 <div id="startup-overlay">
-  <div class="splash-logo">Studio Hub</div>
+  <div class="splash-logo">BlackBlade Hub</div>
   <div class="splash-sub">Blackblade Studio · Production Tools</div>
   <div class="splash-bar-wrap">
     <div class="splash-bar"></div>
@@ -825,7 +1026,7 @@
 <header>
   <div class="header-brand">
     <div class="header-logo-mark"></div>
-    <div class="header-title">STUDIO <span>HUB</span></div>
+    <div class="header-title">BLACKBLADE <span>HUB</span></div>
   </div>
   <div class="header-actions">
     <button class="btn-icon" id="btn-config" title="配置">
@@ -896,8 +1097,17 @@
 
   <!-- PIPELINE ZONE -->
   <section id="pipeline-zone">
-    <div class="section-label">Pipeline</div>
+    <div class="section-label">PIPELINE</div>
     <div class="pipeline-grid">
+
+      <div class="pipeline-card disabled" id="card-ugs" onclick="handlePipeline('ugs')">
+        <div class="pipeline-card-icon ugs">📦</div>
+        <div class="pipeline-card-info">
+          <div class="pipeline-card-name">UGS</div>
+          <div class="pipeline-card-desc">版本控制 / Perforce</div>
+        </div>
+        <div class="pipeline-status-dot" id="dot-ugs"></div>
+      </div>
 
       <div class="pipeline-card disabled" id="card-jenkins" onclick="handlePipeline('jenkins')">
         <div class="pipeline-card-icon jenkins">⚙</div>
@@ -917,14 +1127,13 @@
         <div class="pipeline-status-dot" id="dot-horde"></div>
       </div>
 
-      <div class="pipeline-card disabled" id="card-ugs" onclick="handlePipeline('ugs')">
-        <div class="pipeline-card-icon ugs">📦</div>
-        <div class="pipeline-card-info">
-          <div class="pipeline-card-name">UGS</div>
-          <div class="pipeline-card-desc">版本控制 / Perforce</div>
-        </div>
-        <div class="pipeline-status-dot" id="dot-ugs"></div>
-      </div>
+    </div>
+  </section>
+
+  <!-- TOOLBOX ZONE -->
+  <section id="toolbox-zone">
+    <div class="section-label">TOOLBOX</div>
+    <div class="pipeline-grid">
 
       <div class="pipeline-card disabled" id="card-env" onclick="handlePipeline('env')">
         <div class="pipeline-card-icon env">⚡</div>
@@ -935,10 +1144,70 @@
         <div class="pipeline-status-dot" id="dot-env"></div>
       </div>
 
+      <div class="pipeline-card" id="card-horde-agent" onclick="showHordeAgentPage()">
+        <div class="pipeline-card-icon horde">🤖</div>
+        <div class="pipeline-card-info">
+          <div class="pipeline-card-name">HordeAgent管理</div>
+          <div class="pipeline-card-desc">查看状态 / 启动 / 停止</div>
+        </div>
+        <div class="pipeline-status-dot" id="dot-horde-agent"></div>
+      </div>
+
+      <div class="pipeline-card" id="card-unreal-toolbox" onclick="installUnrealToolbox()">
+        <div class="pipeline-card-icon ugs">🧰</div>
+        <div class="pipeline-card-info">
+          <div class="pipeline-card-name">Unreal Toolbox</div>
+          <div class="pipeline-card-desc">从 Horde 一键安装</div>
+        </div>
+        <div class="pipeline-status-dot" id="dot-unreal-toolbox"></div>
+        <div class="card-progress" id="progress-unreal-toolbox">
+          <div class="card-progress-label" id="progress-label-unreal-toolbox">准备中...</div>
+          <div class="card-progress-track">
+            <div class="card-progress-fill" id="progress-fill-unreal-toolbox"></div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </section>
 
 </main>
+
+<!-- HordeAgent Page -->
+<div id="horde-page" class="page-hidden">
+  <div class="page-header">
+    <button class="page-back" onclick="hideHordeAgentPage()">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M10 12L6 8L10 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <div class="page-title">HordeAgent管理</div>
+  </div>
+  <div class="page-content">
+    <div class="ha-status-bar">
+      <div class="ha-big-status" id="ha-big-status">检测中...</div>
+      <div class="ha-big-actions">
+        <button class="ha-btn ha-btn-primary" id="ha-page-btn-install" onclick="haInstall()">一键配置</button>
+        <button class="ha-btn ha-btn-start" id="ha-page-btn-start" onclick="haStart()" style="display:none">启动</button>
+        <button class="ha-btn ha-btn-stop" id="ha-page-btn-stop" onclick="haStop()" style="display:none">停止</button>
+      </div>
+    </div>
+    <div class="ha-details">
+      <div class="ha-detail-row">
+        <span class="ha-detail-label">服务器</span>
+        <span class="ha-detail-value" id="ha-detail-server">-</span>
+      </div>
+      <div class="ha-detail-row">
+        <span class="ha-detail-label">工作目录</span>
+        <span class="ha-detail-value" id="ha-detail-workdir">-</span>
+      </div>
+      <div class="ha-detail-row">
+        <span class="ha-detail-label">进程ID</span>
+        <span class="ha-detail-value" id="ha-detail-pid">-</span>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Status Bar -->
 <div id="status-bar">
@@ -948,6 +1217,7 @@
   </div>
   <span class="status-sep">·</span>
   <span>BLACKBLADE STUDIO</span>
+  <button class="btn-log" onclick="toggleLogPanel()">查看日志</button>
 </div>
 
 <!-- Config Overlay -->
@@ -1025,6 +1295,14 @@
 </div>
 
 <!-- Toast -->
+<div id="log-panel">
+  <div class="log-header">
+    <span id="log-title">执行日志</span>
+    <button class="log-close" onclick="closeLogPanel()">✕</button>
+  </div>
+  <div id="log-content"></div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -1040,6 +1318,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   }, 2200);
 
   await loadConfig();
+
+  window.studioHub.onScriptLog(({ type, msg }) => appendLog(type, msg));
 });
 
 /* ─── Config ─── */
@@ -1070,10 +1350,10 @@ function renderUI() {
 
   // Pipeline cards
   const pipelineMap = [
-    { key: 'jenkins', val: config.jenkins },
-    { key: 'horde',   val: config.horde },
-    { key: 'ugs',     val: config.ugs },
-    { key: 'env',     val: config.envScript }
+    { key: 'jenkins',   val: config.jenkins },
+    { key: 'horde',     val: config.horde },
+    { key: 'ugs',       val: config.ugs },
+    { key: 'env',       val: config.envScript }
   ];
   pipelineMap.forEach(({ key, val }) => {
     const card = document.getElementById('card-' + key);
@@ -1086,6 +1366,8 @@ function renderUI() {
       dot.className = 'pipeline-status-dot';
     }
   });
+
+  haRefresh();
 }
 
 function renderToolsColumn() {
@@ -1138,23 +1420,200 @@ async function handleToolLaunch(idx) {
 }
 
 async function handlePipeline(type) {
-  const val = type === 'env' ? config.envScript : config[type];
-  if (!val || !val.trim()) { toast('入口未配置，请先打开配置面板'); return; }
-
   if (type === 'env') {
+    const val = config.envScript;
+    if (!val || !val.trim()) { toast('入口未配置，请先打开配置面板'); return; }
     setStatus('warning', '正在执行环境配置...');
+    showLogPanel();
     const result = await window.studioHub.runScript(val);
     if (result.success) {
       toast('环境配置已启动');
       setStatus('ok', '就绪');
     } else {
-      toast('脚本执行失败: ' + result.error);
+      toast(`脚本执行失败: ${result.error}`);
       setStatus('error', '脚本执行失败');
     }
   } else {
+    const val = config[type];
+    if (!val || !val.trim()) { toast('入口未配置，请先打开配置面板'); return; }
     await window.studioHub.openUrl(val);
     toast('已打开 ' + type.toUpperCase());
   }
+}
+
+async function haRefresh() {
+  const status = await window.studioHub.getHordeAgentStatus();
+
+  const dotHa = document.getElementById('dot-horde-agent');
+  const bigStatusEl = document.getElementById('ha-big-status');
+  const serverEl = document.getElementById('ha-detail-server');
+  const workdirEl = document.getElementById('ha-detail-workdir');
+  const pidEl = document.getElementById('ha-detail-pid');
+  const btnInstall = document.getElementById('ha-page-btn-install');
+  const btnStart = document.getElementById('ha-page-btn-start');
+  const btnStop = document.getElementById('ha-page-btn-stop');
+
+  serverEl.textContent = status.config.serverUrl || '-';
+  workdirEl.textContent = status.workDir || '-';
+  pidEl.textContent = status.pid || '-';
+
+  if (!status.isInstalled) {
+    bigStatusEl.textContent = '未安装';
+    bigStatusEl.className = 'ha-big-status warning';
+    dotHa.className = 'pipeline-status-dot warning';
+    btnInstall.style.display = 'inline-block';
+    btnStart.style.display = 'none';
+    btnStop.style.display = 'none';
+  } else if (status.isRunning) {
+    bigStatusEl.textContent = '运行中';
+    bigStatusEl.className = 'ha-big-status running';
+    dotHa.className = 'pipeline-status-dot ready';
+    btnInstall.style.display = 'none';
+    btnStart.style.display = 'none';
+    btnStop.style.display = 'inline-block';
+  } else {
+    bigStatusEl.textContent = '已安装';
+    bigStatusEl.className = 'ha-big-status installed';
+    dotHa.className = 'pipeline-status-dot';
+    btnInstall.style.display = 'none';
+    btnStart.style.display = 'inline-block';
+    btnStop.style.display = 'none';
+  }
+}
+
+function showHordeAgentPage() {
+  document.getElementById('horde-page').classList.remove('page-hidden');
+  haRefresh();
+}
+
+function hideHordeAgentPage() {
+  document.getElementById('horde-page').classList.add('page-hidden');
+}
+
+async function haInstall() {
+  setStatus('warning', '正在安装HordeAgent...');
+  showLogPanel();
+  const result = await window.studioHub.runScript('tools/install_horde_agent.ps1');
+  if (result.success) {
+    toast('HordeAgent安装完成');
+    setStatus('ok', '就绪');
+    await haRefresh();
+  } else {
+    toast(`安装失败: ${result.error}`);
+    setStatus('error', '安装失败');
+  }
+}
+
+async function installUnrealToolbox() {
+  const card      = document.getElementById('card-unreal-toolbox');
+  const dot       = document.getElementById('dot-unreal-toolbox');
+  const progress  = document.getElementById('progress-unreal-toolbox');
+  const fill      = document.getElementById('progress-fill-unreal-toolbox');
+  const label     = document.getElementById('progress-label-unreal-toolbox');
+
+  if (card) { card.classList.add('installing'); }
+  if (dot)  { dot.className = 'pipeline-status-dot warning'; }
+  if (progress) progress.classList.add('visible');
+
+  function setProgress(pct, text) {
+    if (fill)  fill.style.width  = pct + '%';
+    if (label) label.textContent = text;
+  }
+
+  setProgress(5, '准备中...');
+  setStatus('warning', '正在安装 Unreal Toolbox...');
+
+  scriptLogHook = (type, msg) => {
+    if (msg.includes('1/3'))             setProgress(15, '准备目录...');
+    else if (msg.includes('2/3'))        setProgress(30, '下载中...');
+    else if (msg.includes('Download completed')) setProgress(65, '下载完成');
+    else if (msg.includes('3/3'))        setProgress(75, '安装中...');
+    else if (msg.includes('installed successfully') || msg.includes('Done!')) setProgress(100, '安装完成 ✓');
+  };
+
+  const result = await window.studioHub.runScript('tools/install_unreal_toolbox.ps1');
+  scriptLogHook = null;
+
+  if (result.success) {
+    setProgress(100, '安装完成 ✓');
+    if (fill) fill.style.background = 'var(--green)';
+    if (dot)  dot.className = 'pipeline-status-dot ready';
+    toast('Unreal Toolbox 安装完成');
+    setStatus('ok', '就绪');
+    setTimeout(() => {
+      if (progress) progress.classList.remove('visible');
+      if (card)     card.classList.remove('installing');
+    }, 2000);
+  } else {
+    setProgress(100, '安装失败');
+    if (fill) fill.style.background = 'var(--danger)';
+    if (dot)  dot.className = 'pipeline-status-dot error';
+    toast(`安装失败: ${result.error}`);
+    setStatus('error', '安装失败');
+    setTimeout(() => {
+      if (progress) progress.classList.remove('visible');
+      if (card)     card.classList.remove('installing');
+      if (fill)     fill.style.background = '';
+    }, 3000);
+  }
+}
+
+async function haStart() {
+  setStatus('warning', '正在启动HordeAgent...');
+  const result = await window.studioHub.startHordeAgent();
+  if (result.success) {
+    toast('HordeAgent已启动');
+    setStatus('ok', '就绪');
+    await haRefresh();
+  } else {
+    toast(`启动失败: ${result.error}`);
+    setStatus('error', '启动失败');
+  }
+}
+
+async function haStop() {
+  setStatus('warning', '正在停止HordeAgent...');
+  const result = await window.studioHub.stopHordeAgent();
+  if (result.success) {
+    toast('HordeAgent已停止');
+    setStatus('ok', '就绪');
+    await haRefresh();
+  } else {
+    toast(`停止失败: ${result.error}`);
+    setStatus('error', '停止失败');
+  }
+}
+
+function showLogPanel() {
+  const panel = document.getElementById('log-panel');
+  const content = document.getElementById('log-content');
+  content.innerHTML = '';
+  panel.classList.add('visible');
+}
+
+function closeLogPanel() {
+  document.getElementById('log-panel').classList.remove('visible');
+}
+
+function toggleLogPanel() {
+  const panel = document.getElementById('log-panel');
+  if (panel.classList.contains('visible')) {
+    panel.classList.remove('visible');
+  } else {
+    panel.classList.add('visible');
+  }
+}
+
+let scriptLogHook = null;
+
+function appendLog(type, msg) {
+  const content = document.getElementById('log-content');
+  const line = document.createElement('div');
+  line.className = 'log-' + type;
+  line.textContent = msg;
+  content.appendChild(line);
+  content.scrollTop = content.scrollHeight;
+  if (scriptLogHook) scriptLogHook(type, msg);
 }
 
 /* ─── Config Modal ─── */

@@ -5,5 +5,6 @@
   "jenkins": "http://10.248.15.20:8080/",
   "horde": "http://10.248.15.20:13340",
   "ugs": "",
-  "envScript": ""
+  "envScript": "tools/setup_agent_environment.ps1",
+  "hordeAgentScript": "tools/install_horde_agent.ps1"
 }
