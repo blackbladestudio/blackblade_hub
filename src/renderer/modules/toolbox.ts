@@ -1,0 +1,157 @@
+import { toast, setStatus } from '../utils';
+import { showLogPanel, setLogHook } from './log-panel';
+
+export function initToolbox(): void {
+  document.getElementById('card-horde-agent')!.addEventListener('click', showHordeAgentPage);
+  document.getElementById('card-unreal-toolbox')!.addEventListener('click', installUnrealToolbox);
+
+  document.getElementById('ha-page-btn-install')!.addEventListener('click', haInstall);
+  document.getElementById('ha-page-btn-start')!.addEventListener('click', haStart);
+  document.getElementById('ha-page-btn-stop')!.addEventListener('click', haStop);
+
+  document.querySelector('#horde-page .page-back')!.addEventListener('click', hideHordeAgentPage);
+}
+
+export async function refreshHordeAgentStatus(): Promise<void> {
+  const status = await window.studioHub.getHordeAgentStatus();
+
+  const dotHa = document.getElementById('dot-horde-agent')!;
+  const bigStatusEl = document.getElementById('ha-big-status')!;
+  const serverEl = document.getElementById('ha-detail-server')!;
+  const workdirEl = document.getElementById('ha-detail-workdir')!;
+  const pidEl = document.getElementById('ha-detail-pid')!;
+  const btnInstall = document.getElementById('ha-page-btn-install') as HTMLElement;
+  const btnStart = document.getElementById('ha-page-btn-start') as HTMLElement;
+  const btnStop = document.getElementById('ha-page-btn-stop') as HTMLElement;
+
+  serverEl.textContent = status.config.serverUrl || '-';
+  workdirEl.textContent = status.workDir || '-';
+  pidEl.textContent = status.pid?.toString() || '-';
+
+  if (!status.isInstalled) {
+    bigStatusEl.textContent = '未安装';
+    bigStatusEl.className = 'ha-big-status warning';
+    dotHa.className = 'pipeline-status-dot warning';
+    btnInstall.style.display = 'inline-block';
+    btnStart.style.display = 'none';
+    btnStop.style.display = 'none';
+  } else if (status.isRunning) {
+    bigStatusEl.textContent = '运行中';
+    bigStatusEl.className = 'ha-big-status running';
+    dotHa.className = 'pipeline-status-dot ready';
+    btnInstall.style.display = 'none';
+    btnStart.style.display = 'none';
+    btnStop.style.display = 'inline-block';
+  } else {
+    bigStatusEl.textContent = '已安装';
+    bigStatusEl.className = 'ha-big-status installed';
+    dotHa.className = 'pipeline-status-dot';
+    btnInstall.style.display = 'none';
+    btnStart.style.display = 'inline-block';
+    btnStop.style.display = 'none';
+  }
+}
+
+function showHordeAgentPage(): void {
+  document.getElementById('horde-page')!.classList.remove('page-hidden');
+  refreshHordeAgentStatus();
+}
+
+function hideHordeAgentPage(): void {
+  document.getElementById('horde-page')!.classList.add('page-hidden');
+}
+
+async function haInstall(): Promise<void> {
+  setStatus('warning', '正在安装HordeAgent...');
+  showLogPanel();
+  const result = await window.studioHub.runScript('tools/install_horde_agent.ps1');
+  if (result.success) {
+    toast('HordeAgent安装完成');
+    setStatus('ok', '就绪');
+    await refreshHordeAgentStatus();
+  } else {
+    toast(`安装失败: ${result.error}`);
+    setStatus('error', '安装失败');
+  }
+}
+
+async function haStart(): Promise<void> {
+  setStatus('warning', '正在启动HordeAgent...');
+  const result = await window.studioHub.startHordeAgent();
+  if (result.success) {
+    toast('HordeAgent已启动');
+    setStatus('ok', '就绪');
+    await refreshHordeAgentStatus();
+  } else {
+    toast(`启动失败: ${result.error}`);
+    setStatus('error', '启动失败');
+  }
+}
+
+async function haStop(): Promise<void> {
+  setStatus('warning', '正在停止HordeAgent...');
+  const result = await window.studioHub.stopHordeAgent();
+  if (result.success) {
+    toast('HordeAgent已停止');
+    setStatus('ok', '就绪');
+    await refreshHordeAgentStatus();
+  } else {
+    toast(`停止失败: ${result.error}`);
+    setStatus('error', '停止失败');
+  }
+}
+
+async function installUnrealToolbox(): Promise<void> {
+  const card = document.getElementById('card-unreal-toolbox');
+  const dot = document.getElementById('dot-unreal-toolbox');
+  const progress = document.getElementById('progress-unreal-toolbox');
+  const fill = document.getElementById('progress-fill-unreal-toolbox') as HTMLElement | null;
+  const label = document.getElementById('progress-label-unreal-toolbox');
+
+  card?.classList.add('installing');
+  if (dot) dot.className = 'pipeline-status-dot warning';
+  progress?.classList.add('visible');
+
+  function setProgress(pct: number, text: string): void {
+    if (fill) fill.style.width = pct + '%';
+    if (label) label.textContent = text;
+  }
+
+  setProgress(5, '准备中...');
+  setStatus('warning', '正在安装 Unreal Toolbox...');
+
+  setLogHook((_type, msg) => {
+    if (msg.includes('1/3')) setProgress(15, '准备目录...');
+    else if (msg.includes('2/3')) setProgress(30, '下载中...');
+    else if (msg.includes('Download completed')) setProgress(65, '下载完成');
+    else if (msg.includes('3/3')) setProgress(75, '安装中...');
+    else if (msg.includes('installed successfully') || msg.includes('Done!'))
+      setProgress(100, '安装完成 ✓');
+  });
+
+  const result = await window.studioHub.runScript('tools/install_unreal_toolbox.ps1');
+  setLogHook(null);
+
+  if (result.success) {
+    setProgress(100, '安装完成 ✓');
+    if (fill) fill.style.background = 'var(--green)';
+    if (dot) dot.className = 'pipeline-status-dot ready';
+    toast('Unreal Toolbox 安装完成');
+    setStatus('ok', '就绪');
+    setTimeout(() => {
+      progress?.classList.remove('visible');
+      card?.classList.remove('installing');
+    }, 2000);
+  } else {
+    setProgress(100, '安装失败');
+    if (fill) fill.style.background = 'var(--danger)';
+    if (dot) dot.className = 'pipeline-status-dot error';
+    toast(`安装失败: ${result.error}`);
+    setStatus('error', '安装失败');
+    setTimeout(() => {
+      progress?.classList.remove('visible');
+      card?.classList.remove('installing');
+      if (fill) fill.style.background = '';
+    }, 3000);
+  }
+}

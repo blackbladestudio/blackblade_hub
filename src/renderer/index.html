@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BlackBlade Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Startup Overlay -->
+<div id="startup-overlay">
+  <div class="splash-logo">BlackBlade Hub</div>
+  <div class="splash-sub">Blackblade Studio · Production Tools</div>
+  <div class="splash-bar-wrap"><div class="splash-bar"></div></div>
+</div>
+
+<!-- Animated Background -->
+<div class="bg-grid"></div>
+<div class="bg-radial"></div>
+
+<!-- Header -->
+<header>
+  <div class="header-brand">
+    <div class="header-logo-mark"></div>
+    <div class="header-title">BLACKBLADE <span>HUB</span></div>
+  </div>
+  <div class="header-actions">
+    <button class="btn-icon" id="btn-config" title="配置">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.4"/>
+        <path d="M8 1v2M8 13v2M1 8h2M13 8h2M2.93 2.93l1.41 1.41M11.66 11.66l1.41 1.41M2.93 13.07l1.41-1.41M11.66 4.34l1.41-1.41" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+      </svg>
+    </button>
+
+    <div class="win-controls">
+      <button class="win-btn" id="btn-minimize" title="最小化">
+        <svg width="12" height="2" viewBox="0 0 12 2" fill="none">
+          <line x1="0" y1="1" x2="12" y2="1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <button class="win-btn" id="btn-maximize" title="最大化">
+        <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+          <rect x="0.75" y="0.75" width="9.5" height="9.5" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
+        </svg>
+      </button>
+      <button class="win-btn close" id="btn-close" title="关闭">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <line x1="1" y1="1" x2="11" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="11" y1="1" x2="1" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- Main Content -->
+<main>
+
+  <!-- LAUNCH ZONE -->
+  <section id="launch-zone">
+    <div class="launch-zone-bg"></div>
+    <div class="section-label">Launch</div>
+    <div class="launch-grid">
+      <div class="launch-primary disabled" id="launch-game">
+        <div class="launch-icon-wrap">▶</div>
+        <div class="launch-text">
+          <div class="launch-label">Start Game</div>
+          <div class="launch-name">启动游戏</div>
+        </div>
+      </div>
+
+      <div class="launch-secondary disabled" id="launch-editor">
+        <div class="launch-icon-wrap" style="background:var(--blue-dim); border-color:rgba(79,163,227,0.3);">✦</div>
+        <div class="launch-text">
+          <div class="launch-label" style="color:var(--blue);">Open Editor</div>
+          <div class="launch-name">启动编辑器</div>
+        </div>
+      </div>
+
+      <div class="launch-tools" id="tools-column"></div>
+    </div>
+  </section>
+
+  <!-- PIPELINE ZONE -->
+  <section id="pipeline-zone">
+    <div class="section-label">PIPELINE</div>
+    <div class="pipeline-grid">
+      <div class="pipeline-card disabled" id="card-ugs">
+        <div class="pipeline-card-icon ugs">📦</div>
+        <div class="pipeline-card-info">
+          <div class="pipeline-card-name">UGS</div>
+          <div class="pipeline-card-desc">版本控制 / Perforce</div>
+        </div>
+        <div class="pipeline-status-dot" id="dot-ugs"></div>
+      </div>
+
+      <div class="pipeline-card disabled" id="card-jenkins">
+        <div class="pipeline-card-icon jenkins">⚙</div>
+        <div class="pipeline-card-info">
+          <div class="pipeline-card-name">Jenkins</div>
+          <div class="pipeline-card-desc">CI / 构建流水线</div>
+        </div>
+        <div class="pipeline-status-dot" id="dot-jenkins"></div>
+      </div>
+
+      <div class="pipeline-card disabled" id="card-horde">
+        <div class="pipeline-card-icon horde">🔥</div>
+        <div class="pipeline-card-info">
+          <div class="pipeline-card-name">Horde</div>
+          <div class="pipeline-card-desc">分布式构建集群</div>
+        </div>
+        <div class="pipeline-status-dot" id="dot-horde"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TOOLBOX ZONE -->
+  <section id="toolbox-zone">
+    <div class="section-label">TOOLBOX</div>
+    <div class="pipeline-grid">
+      <div class="pipeline-card disabled" id="card-env">
+        <div class="pipeline-card-icon env">⚡</div>
+        <div class="pipeline-card-info">
+          <div class="pipeline-card-name">环境配置</div>
+          <div class="pipeline-card-desc">工作站环境一键配置</div>
+        </div>
+        <div class="pipeline-status-dot" id="dot-env"></div>
+      </div>
+
+      <div class="pipeline-card" id="card-horde-agent">
+        <div class="pipeline-card-icon horde">🤖</div>
+        <div class="pipeline-card-info">
+          <div class="pipeline-card-name">HordeAgent管理</div>
+          <div class="pipeline-card-desc">查看状态 / 启动 / 停止</div>
+        </div>
+        <div class="pipeline-status-dot" id="dot-horde-agent"></div>
+      </div>
+
+      <div class="pipeline-card" id="card-unreal-toolbox">
+        <div class="pipeline-card-icon ugs">🧰</div>
+        <div class="pipeline-card-info">
+          <div class="pipeline-card-name">Unreal Toolbox</div>
+          <div class="pipeline-card-desc">从 Horde 一键安装</div>
+        </div>
+        <div class="pipeline-status-dot" id="dot-unreal-toolbox"></div>
+        <div class="card-progress" id="progress-unreal-toolbox">
+          <div class="card-progress-label" id="progress-label-unreal-toolbox">准备中...</div>
+          <div class="card-progress-track">
+            <div class="card-progress-fill" id="progress-fill-unreal-toolbox"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- HordeAgent Page -->
+<div id="horde-page" class="page-hidden">
+  <div class="page-header">
+    <button class="page-back">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M10 12L6 8L10 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <div class="page-title">HordeAgent管理</div>
+  </div>
+  <div class="page-content">
+    <div class="ha-status-bar">
+      <div class="ha-big-status" id="ha-big-status">检测中...</div>
+      <div class="ha-big-actions">
+        <button class="ha-btn ha-btn-primary" id="ha-page-btn-install">一键配置</button>
+        <button class="ha-btn ha-btn-start" id="ha-page-btn-start" style="display:none">启动</button>
+        <button class="ha-btn ha-btn-stop" id="ha-page-btn-stop" style="display:none">停止</button>
+      </div>
+    </div>
+    <div class="ha-details">
+      <div class="ha-detail-row">
+        <span class="ha-detail-label">服务器</span>
+        <span class="ha-detail-value" id="ha-detail-server">-</span>
+      </div>
+      <div class="ha-detail-row">
+        <span class="ha-detail-label">工作目录</span>
+        <span class="ha-detail-value" id="ha-detail-workdir">-</span>
+      </div>
+      <div class="ha-detail-row">
+        <span class="ha-detail-label">进程ID</span>
+        <span class="ha-detail-value" id="ha-detail-pid">-</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Status Bar -->
+<div id="status-bar">
+  <div class="status-indicator">
+    <div class="status-dot idle" id="status-dot"></div>
+    <span id="status-text">就绪</span>
+  </div>
+  <span class="status-sep">·</span>
+  <span>BLACKBLADE STUDIO</span>
+  <button class="btn-log" id="btn-toggle-log">查看日志</button>
+</div>
+
+<!-- Config Overlay -->
+<div id="config-overlay">
+  <div id="config-panel">
+    <div class="cfg-header">
+      <div class="cfg-title">Configuration</div>
+      <button class="cfg-close" id="cfg-close">✕</button>
+    </div>
+
+    <!-- Launch Section -->
+    <div class="cfg-section">
+      <div class="cfg-section-title">Launch</div>
+
+      <div class="cfg-row">
+        <label>游戏可执行文件</label>
+        <div class="cfg-input-wrap">
+          <input class="cfg-input" id="cfg-game" type="text" placeholder="Game.exe 路径" />
+          <button class="cfg-browse" id="btn-browse-game">浏览</button>
+        </div>
+      </div>
+
+      <div class="cfg-row">
+        <label>编辑器可执行文件</label>
+        <div class="cfg-input-wrap">
+          <input class="cfg-input" id="cfg-editor" type="text" placeholder="UnrealEditor.exe 路径" />
+          <button class="cfg-browse" id="btn-browse-editor">浏览</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Production Tools -->
+    <div class="cfg-section">
+      <div class="cfg-section-title">生产工具</div>
+      <div class="tools-list" id="cfg-tools-list"></div>
+      <button class="cfg-add-tool" id="btn-add-tool">+ 添加工具</button>
+    </div>
+
+    <!-- Pipeline Section -->
+    <div class="cfg-section">
+      <div class="cfg-section-title">Pipeline</div>
+
+      <div class="cfg-row">
+        <label>Jenkins URL</label>
+        <input class="cfg-input" id="cfg-jenkins" type="text" placeholder="http://10.248.15.20:8080/" />
+      </div>
+
+      <div class="cfg-row">
+        <label>Horde URL</label>
+        <input class="cfg-input" id="cfg-horde" type="text" placeholder="http://10.248.15.20:13340" />
+      </div>
+
+      <div class="cfg-row">
+        <label>UGS 路径 / URL</label>
+        <div class="cfg-input-wrap">
+          <input class="cfg-input" id="cfg-ugs" type="text" placeholder="留空则禁用" />
+          <button class="cfg-browse" id="btn-browse-ugs">浏览</button>
+        </div>
+      </div>
+
+      <div class="cfg-row">
+        <label>环境配置脚本</label>
+        <div class="cfg-input-wrap">
+          <input class="cfg-input" id="cfg-env" type="text" placeholder="setup.ps1 路径" />
+          <button class="cfg-browse" id="btn-browse-env">浏览</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="cfg-actions">
+      <button class="btn-primary" id="btn-save-config">保存配置</button>
+      <button class="btn-secondary" id="btn-cancel-config">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- Log Panel -->
+<div id="log-panel">
+  <div class="log-header">
+    <span id="log-title">执行日志</span>
+    <button class="log-close" id="btn-close-log">✕</button>
+  </div>
+  <div id="log-content"></div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,26 +1,37 @@
 {
   "name": "blackblade-hub",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "BlackBlade Hub - 工作室统一工作台",
-  "main": "src/main.js",
+  "main": "dist/main/index.js",
   "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs && electron .",
     "start": "electron .",
-    "build": "electron-builder --win --x64",
-    "pack": "electron-builder --dir"
+    "pack": "node scripts/build.mjs && electron-builder --dir",
+    "dist": "node scripts/build.mjs && electron-builder --win --x64"
   },
   "build": {
     "appId": "com.blackblade.hub",
     "productName": "BlackBlade Hub",
     "directories": {
-      "output": "dist"
+      "output": "dist-package"
     },
+    "files": [
+      "dist/**/*",
+      "!dist/**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "tools",
+        "to": "tools",
+        "filter": ["**/*"]
+      }
+    ],
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         }
       ],
       "icon": "assets/icon.ico"
@@ -32,11 +43,11 @@
       "createStartMenuShortcut": true
     }
   },
-  "dependencies": {
-    "yauzl": "^3.2.1"
-  },
   "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.24.0",
     "electron": "^33.4.0",
-    "electron-builder": "^25.1.8"
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.0"
   }
 }
