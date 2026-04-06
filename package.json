@@ -43,6 +43,10 @@
       "createStartMenuShortcut": true
     }
   },
+  "dependencies": {
+    "extract-zip": "^2.0.1",
+    "minio": "^8.0.4"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "esbuild": "^0.24.0",

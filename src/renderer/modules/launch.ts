@@ -2,15 +2,9 @@ import type { AppConfig } from '../../types/config';
 import { toast, setStatus, escHtml, addRipple } from '../utils';
 
 export function initLaunch(getConfig: () => AppConfig): void {
-  const gameEl = document.getElementById('launch-game')!;
   const editorEl = document.getElementById('launch-editor')!;
-
-  gameEl.addEventListener('click', () => handleLaunch('game', getConfig()));
   editorEl.addEventListener('click', () => handleLaunch('editor', getConfig()));
-
-  [gameEl, editorEl].forEach((el) => {
-    el.addEventListener('click', (e) => addRipple(el, e));
-  });
+  editorEl.addEventListener('click', (e) => addRipple(editorEl, e));
 }
 
 async function handleLaunch(type: 'game' | 'editor', config: AppConfig): Promise<void> {
@@ -65,11 +59,4 @@ export function renderToolsColumn(config: AppConfig): void {
     col.appendChild(btn);
   });
 
-  if (tools.length === 0) {
-    const placeholder = document.createElement('div');
-    placeholder.style.cssText =
-      'font-size:12px;color:var(--muted);text-align:center;padding:14px 0;letter-spacing:1px;';
-    placeholder.textContent = '在配置中添加生产工具';
-    col.appendChild(placeholder);
-  }
 }

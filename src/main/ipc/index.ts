@@ -4,6 +4,7 @@ import { registerWindowHandlers } from './window';
 import { registerLaunchHandlers } from './launch';
 import { registerScriptHandlers } from './script';
 import { registerHordeHandlers } from './horde';
+import { registerLauncherHandlers } from './launcher';
 
 export function registerAllHandlers(getMainWindow: () => BrowserWindow | null): void {
   registerConfigHandlers();
@@ -11,4 +12,5 @@ export function registerAllHandlers(getMainWindow: () => BrowserWindow | null): 
   registerLaunchHandlers(getMainWindow);
   registerScriptHandlers(getMainWindow);
   registerHordeHandlers();
+  registerLauncherHandlers(getMainWindow);
 }

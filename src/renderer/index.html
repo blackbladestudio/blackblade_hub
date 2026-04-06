@@ -64,12 +64,19 @@
     <div class="launch-zone-bg"></div>
     <div class="section-label">Launch</div>
     <div class="launch-grid">
-      <div class="launch-primary disabled" id="launch-game">
+      <div class="launch-primary" id="launch-game-play">
         <div class="launch-icon-wrap">▶</div>
         <div class="launch-text">
-          <div class="launch-label">Start Game</div>
+          <div class="launch-label">Play Game</div>
           <div class="launch-name">启动游戏</div>
+          <div class="launch-game-status" id="launch-game-status"></div>
         </div>
+        <button class="launch-manage" id="btn-game-manage" title="游戏管理">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 3.5V8M8 8V12.5M8 8H12.5M8 8H3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <span>管理</span>
+        </button>
       </div>
 
       <div class="launch-secondary disabled" id="launch-editor">
@@ -157,6 +164,118 @@
   </section>
 
 </main>
+
+<!-- Launcher Page -->
+<div id="launcher-page" class="page-hidden">
+  <div class="page-header">
+    <button class="page-back" id="launcher-back">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M10 12L6 8L10 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <div class="page-title">游戏管理</div>
+    <button class="btn-icon" id="launcher-btn-refresh" title="刷新">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+        <path d="M14 8A6 6 0 1 1 8 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M10 2L8 4.5 10.5 5.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <div class="launcher-connection">
+      <div class="status-dot idle" id="launcher-conn-dot"></div>
+      <span id="launcher-conn-text">未连接</span>
+    </div>
+  </div>
+
+  <div class="launcher-content">
+    <!-- Variant Tabs -->
+    <div class="launcher-tabs" id="launcher-tabs">
+      <button class="launcher-tab active" data-variant="Shipping">Shipping</button>
+      <button class="launcher-tab" data-variant="Development">Development</button>
+      <button class="launcher-tab" data-variant="Testing">Testing</button>
+    </div>
+
+    <!-- Build Info -->
+    <div class="launcher-build-info" id="launcher-build-info">
+      <div id="launcher-not-configured">
+        <p style="text-align:center;padding:40px 0;color:var(--muted);font-size:14px;">
+          请先在 <strong>配置</strong> 中设置 MinIO 连接信息和安装目录
+        </p>
+      </div>
+
+      <div id="launcher-build-details" style="display:none">
+        <div class="launcher-info-grid">
+          <div class="launcher-info-section">
+            <h3>远程版本</h3>
+            <div class="launcher-detail-row">
+              <span class="launcher-detail-label">版本</span>
+              <span id="launcher-remote-version">-</span>
+            </div>
+            <div class="launcher-detail-row">
+              <span class="launcher-detail-label">构建号</span>
+              <span id="launcher-remote-build">-</span>
+            </div>
+            <div class="launcher-detail-row">
+              <span class="launcher-detail-label">大小</span>
+              <span id="launcher-remote-size">-</span>
+            </div>
+            <div class="launcher-detail-row">
+              <span class="launcher-detail-label">发布时间</span>
+              <span id="launcher-remote-time">-</span>
+            </div>
+            <div class="launcher-notes" id="launcher-remote-notes" style="display:none"></div>
+          </div>
+          <div class="launcher-info-section" id="launcher-local-info" style="display:none">
+            <h3>本地安装</h3>
+            <div class="launcher-detail-row">
+              <span class="launcher-detail-label">版本</span>
+              <span id="launcher-local-version">-</span>
+            </div>
+            <div class="launcher-detail-row">
+              <span class="launcher-detail-label">安装时间</span>
+              <span id="launcher-local-time">-</span>
+            </div>
+            <div class="launcher-detail-row">
+              <span class="launcher-detail-label">占用空间</span>
+              <span id="launcher-local-size">-</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="launcher-no-builds" style="display:none">
+        <p style="text-align:center;padding:40px 0;color:var(--muted);font-size:14px;">
+          当前变体暂无可用构建
+        </p>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div class="launcher-progress" id="launcher-progress" style="display:none">
+      <div class="launcher-progress-label" id="launcher-progress-label">准备中...</div>
+      <div class="launcher-progress-bar">
+        <div class="launcher-progress-fill" id="launcher-progress-fill"></div>
+      </div>
+      <div class="launcher-progress-detail" id="launcher-progress-detail"></div>
+    </div>
+
+    <!-- Actions -->
+    <div class="launcher-actions">
+      <button class="launcher-btn launcher-btn-install" id="launcher-btn-install">安装游戏</button>
+      <button class="launcher-btn launcher-btn-launch" id="launcher-btn-launch" style="display:none">▶ 启动游戏</button>
+      <button class="launcher-btn launcher-btn-update" id="launcher-btn-update" style="display:none">🔄 更新</button>
+      <button class="launcher-btn launcher-btn-uninstall" id="launcher-btn-uninstall" style="display:none">卸载</button>
+    </div>
+
+    <!-- Install Dir -->
+    <div class="launcher-install-dir">
+      <label>安装目录</label>
+      <div class="launcher-dir-row">
+        <span id="launcher-install-dir-text">未设置</span>
+        <button id="launcher-btn-browse-dir">浏览</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- HordeAgent Page -->
 <div id="horde-page" class="page-hidden">
@@ -268,6 +387,52 @@
         <div class="cfg-input-wrap">
           <input class="cfg-input" id="cfg-env" type="text" placeholder="setup.ps1 路径" />
           <button class="cfg-browse" id="btn-browse-env">浏览</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MinIO & Launcher -->
+    <div class="cfg-section">
+      <div class="cfg-section-title">MinIO 游戏分发</div>
+
+      <div class="cfg-row">
+        <label>MinIO 服务器</label>
+        <input class="cfg-input" id="cfg-minio-endpoint" type="text" placeholder="http://10.248.15.20:9000" />
+      </div>
+
+      <div class="cfg-row">
+        <label>Access Key</label>
+        <input class="cfg-input" id="cfg-minio-access-key" type="text" placeholder="access key" />
+      </div>
+
+      <div class="cfg-row">
+        <label>Secret Key</label>
+        <div class="cfg-input-wrap">
+          <input class="cfg-input" id="cfg-minio-secret-key" type="password" placeholder="secret key" />
+          <button class="cfg-browse" id="btn-toggle-secret" title="显示/隐藏">👁</button>
+        </div>
+      </div>
+
+      <div class="cfg-row">
+        <label>存储桶</label>
+        <input class="cfg-input" id="cfg-minio-bucket" type="text" placeholder="build_client" />
+      </div>
+
+      <div class="cfg-row">
+        <label>构建路径前缀</label>
+        <input class="cfg-input" id="cfg-launcher-prefix" type="text" placeholder="ProjectZion/Win64" />
+      </div>
+
+      <div class="cfg-row">
+        <label>可执行文件路径 <small style="color:var(--muted);font-weight:400;">(相对构建目录，留空自动检测)</small></label>
+        <input class="cfg-input" id="cfg-launcher-exe" type="text" placeholder="Binaries/Win64/Game.exe" />
+      </div>
+
+      <div class="cfg-row">
+        <label>游戏安装目录</label>
+        <div class="cfg-input-wrap">
+          <input class="cfg-input" id="cfg-launcher-install-dir" type="text" placeholder="D:\Games\BlackBlade" />
+          <button class="cfg-browse" id="btn-browse-install-dir">浏览</button>
         </div>
       </div>
     </div>

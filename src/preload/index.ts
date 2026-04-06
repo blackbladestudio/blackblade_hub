@@ -17,6 +17,18 @@ const api: StudioHubAPI = {
   winMinimize: () => ipcRenderer.send('win-minimize'),
   winMaximize: () => ipcRenderer.send('win-maximize'),
   winClose: () => ipcRenderer.send('win-close'),
+
+  // Launcher
+  launcherGetManifest: () => ipcRenderer.invoke('launcher:get-manifest'),
+  launcherGetState: () => ipcRenderer.invoke('launcher:get-state'),
+  launcherInstall: (variant) => ipcRenderer.invoke('launcher:install', variant),
+  launcherLaunch: (variant) => ipcRenderer.invoke('launcher:launch', variant),
+  launcherUninstall: (variant) => ipcRenderer.invoke('launcher:uninstall', variant),
+  launcherTestConnection: () => ipcRenderer.invoke('launcher:test-connection'),
+  launcherSelectInstallDir: () => ipcRenderer.invoke('launcher:select-install-dir'),
+  onLauncherProgress: (callback) => {
+    ipcRenderer.on('launcher-progress', (_e, progress) => callback(progress));
+  },
 };
 
 contextBridge.exposeInMainWorld('studioHub', api);

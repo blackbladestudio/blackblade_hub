@@ -302,6 +302,40 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
   cursor: not-allowed;
   pointer-events: none;
 }
+.launch-game-status {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: monospace;
+  letter-spacing: 0.3px;
+  margin-top: 2px;
+}
+.launch-game-status.installed { color: var(--green); }
+.launch-game-status.not-installed { color: var(--muted); font-style: italic; }
+.launch-manage {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  background: rgba(200,164,90,0.1);
+  border: 1px solid rgba(200,164,90,0.25);
+  border-radius: 5px;
+  color: var(--gold);
+  padding: 4px 10px;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.15s, border-color 0.15s;
+  z-index: 2;
+}
+.launch-manage:hover {
+  background: rgba(200,164,90,0.2);
+  border-color: var(--gold);
+}
+.launch-manage svg { flex-shrink: 0; }
 .launch-icon-wrap {
   width: 52px;
   height: 52px;
@@ -373,6 +407,9 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
   flex-direction: column;
   gap: 8px;
   min-width: 160px;
+}
+.launch-tools:empty {
+  display: none;
 }
 
 .tool-btn {
@@ -990,4 +1027,252 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 }
 @keyframes rippleAnim {
   to { transform: scale(4); opacity: 0; }
+}
+
+/* ═══════════════════════════════════════════
+   LAUNCHER PAGE
+   ═══════════════════════════════════════════ */
+
+#launcher-page {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 28px;
+  -webkit-app-region: no-drag;
+}
+#launcher-page .page-header {
+  gap: 12px;
+}
+.launcher-connection {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.3px;
+}
+.launcher-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  padding-top: 4px;
+}
+.launcher-content::-webkit-scrollbar { width: 4px; }
+.launcher-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+/* Tabs */
+.launcher-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px;
+}
+.launcher-tab {
+  flex: 1;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.launcher-tab:hover {
+  color: var(--text);
+  background: rgba(255,255,255,0.03);
+}
+.launcher-tab.active {
+  color: var(--gold);
+  background: var(--gold-dim);
+}
+
+/* Build Info */
+.launcher-build-info {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  min-height: 120px;
+}
+.launcher-info-grid {
+  display: flex;
+  gap: 32px;
+}
+.launcher-info-section {
+  flex: 1;
+}
+.launcher-info-section h3 {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.launcher-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+  font-size: 14px;
+}
+.launcher-detail-label {
+  color: var(--muted);
+}
+.launcher-detail-row span:last-child {
+  color: var(--text);
+  font-family: monospace;
+  font-size: 13px;
+}
+.launcher-notes {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: rgba(200,164,90,0.06);
+  border-left: 3px solid var(--gold);
+  border-radius: 0 6px 6px 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* Progress */
+.launcher-progress {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+}
+.launcher-progress-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+.launcher-progress-bar {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.launcher-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), #f0d080);
+  border-radius: 3px;
+  width: 0%;
+  transition: width 0.3s ease;
+}
+.launcher-progress-detail {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: monospace;
+  letter-spacing: 0.3px;
+}
+
+/* Actions */
+.launcher-actions {
+  display: flex;
+  gap: 10px;
+}
+.launcher-btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 6px;
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.launcher-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+.launcher-btn-install {
+  background: var(--gold);
+  color: #0a0704;
+  flex: 1;
+}
+.launcher-btn-launch {
+  background: var(--green);
+  color: #0a0704;
+  flex: 1;
+  font-size: 16px;
+}
+.launcher-btn-update {
+  background: var(--blue);
+  color: #fff;
+  padding: 12px 20px;
+}
+.launcher-btn-uninstall {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 12px 20px;
+}
+.launcher-btn-uninstall:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+  opacity: 1;
+}
+
+/* Install Dir */
+.launcher-install-dir {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 20px;
+}
+.launcher-install-dir label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.launcher-dir-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.launcher-dir-row span {
+  flex: 1;
+  font-family: monospace;
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.launcher-dir-row button {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 12px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.launcher-dir-row button:hover {
+  border-color: var(--blue);
+  color: var(--blue);
 }

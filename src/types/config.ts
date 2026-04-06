@@ -3,6 +3,21 @@ export interface ToolEntry {
   path: string;
 }
 
+export interface MinioConfig {
+  endpoint: string;
+  accessKey: string;
+  secretKey: string;
+  bucket: string;
+}
+
+export interface LauncherConfig {
+  installDir: string;
+  /** S3 key prefix under which variants are organized, e.g. "ProjectZion/Win64" */
+  prefix: string;
+  /** Relative path to .exe inside the build directory, e.g. "Game/Binaries/Win64/Game.exe". Empty = auto-detect */
+  exeRelativePath: string;
+}
+
 export interface AppConfig {
   gameExe: string;
   editorExe: string;
@@ -12,6 +27,8 @@ export interface AppConfig {
   ugs: string;
   envScript: string;
   hordeAgentScript?: string;
+  minio: MinioConfig;
+  launcher: LauncherConfig;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -22,4 +39,15 @@ export const DEFAULT_CONFIG: AppConfig = {
   horde: '',
   ugs: '',
   envScript: '',
+  minio: {
+    endpoint: 'http://10.248.15.20:9000',
+    accessKey: '',
+    secretKey: '',
+    bucket: 'builds-client',
+  },
+  launcher: {
+    installDir: '',
+    prefix: '',
+    exeRelativePath: '',
+  },
 };

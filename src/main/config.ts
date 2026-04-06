@@ -59,13 +59,19 @@ export function loadConfig(): AppConfig {
     if (fs.existsSync(configPath)) {
       const raw = fs.readFileSync(configPath, 'utf-8');
       const userCfg = JSON.parse(raw);
-      return { ...DEFAULT_CONFIG, ...defaultCfg, ...userCfg };
+      const merged = { ...DEFAULT_CONFIG, ...defaultCfg, ...userCfg };
+      merged.minio = { ...DEFAULT_CONFIG.minio, ...(defaultCfg as any).minio, ...userCfg.minio };
+      merged.launcher = { ...DEFAULT_CONFIG.launcher, ...(defaultCfg as any).launcher, ...userCfg.launcher };
+      return merged;
     }
   } catch {
     // ignore
   }
 
-  return { ...DEFAULT_CONFIG, ...defaultCfg };
+  const base = { ...DEFAULT_CONFIG, ...defaultCfg };
+  base.minio = { ...DEFAULT_CONFIG.minio, ...(defaultCfg as any).minio };
+  base.launcher = { ...DEFAULT_CONFIG.launcher, ...(defaultCfg as any).launcher };
+  return base;
 }
 
 export function saveConfig(data: AppConfig): void {

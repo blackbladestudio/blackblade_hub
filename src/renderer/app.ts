@@ -5,6 +5,7 @@ import { initPipeline } from './modules/pipeline';
 import { initToolbox, refreshHordeAgentStatus } from './modules/toolbox';
 import { initConfigModal } from './modules/config-modal';
 import { initLogPanel, appendLog } from './modules/log-panel';
+import { initLauncher } from './modules/launcher';
 
 declare global {
   interface Window {
@@ -20,6 +21,8 @@ let config: AppConfig = {
   horde: '',
   ugs: '',
   envScript: '',
+  minio: { endpoint: 'http://10.248.15.20:9000', accessKey: '', secretKey: '', bucket: 'builds-client' },
+  launcher: { installDir: '', prefix: '', exeRelativePath: '' },
 };
 
 function getConfig(): AppConfig {
@@ -37,10 +40,7 @@ async function loadAppConfig(): Promise<void> {
 }
 
 function renderUI(): void {
-  const gameEl = document.getElementById('launch-game');
   const editorEl = document.getElementById('launch-editor');
-
-  gameEl?.classList.toggle('disabled', !config.gameExe?.trim());
   editorEl?.classList.toggle('disabled', !config.editorExe?.trim());
 
   renderToolsColumn(config);
@@ -72,6 +72,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   initToolbox();
   initConfigModal(getConfig, setConfigAndRender);
   initLogPanel();
+  initLauncher(getConfig);
 
   document.getElementById('btn-minimize')!.addEventListener('click', () => window.studioHub.winMinimize());
   document.getElementById('btn-maximize')!.addEventListener('click', () => window.studioHub.winMaximize());

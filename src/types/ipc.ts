@@ -1,4 +1,5 @@
 import type { AppConfig } from './config';
+import type { LauncherManifest, LauncherState, DownloadProgress, GameVariant } from './launcher';
 
 export interface ScriptResult {
   success: boolean;
@@ -41,4 +42,14 @@ export interface StudioHubAPI {
   winMinimize(): void;
   winMaximize(): void;
   winClose(): void;
+
+  // Launcher
+  launcherGetManifest(): Promise<{ data: LauncherManifest | null; error?: string }>;
+  launcherGetState(): Promise<LauncherState>;
+  launcherInstall(variant: GameVariant): Promise<LaunchResult>;
+  launcherLaunch(variant: GameVariant): Promise<LaunchResult>;
+  launcherUninstall(variant: GameVariant): Promise<LaunchResult>;
+  launcherTestConnection(): Promise<LaunchResult>;
+  launcherSelectInstallDir(): Promise<string | null>;
+  onLauncherProgress(callback: (progress: DownloadProgress) => void): void;
 }
