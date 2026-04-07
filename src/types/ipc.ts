@@ -10,6 +10,7 @@ export interface ScriptResult {
 export interface LaunchResult {
   success: boolean;
   error?: string;
+  path?: string;
 }
 
 export interface HordeAgentStatus {

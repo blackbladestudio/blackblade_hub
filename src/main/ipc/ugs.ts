@@ -85,7 +85,7 @@ export function registerUgsHandlers(): void {
     const tempDir = getTempDir();
     const msiPath = path.join(tempDir, 'UnrealGameSync.msi');
 
-    console.log('[UGS] 开始下载 MSI 到:', msiPath);
+    console.log('[UGS] Download path:', msiPath);
 
     try {
       await execAsync(
@@ -94,25 +94,25 @@ export function registerUgsHandlers(): void {
       );
 
       if (!fs.existsSync(msiPath)) {
-        console.log('[UGS] MSI 文件不存在');
-        return { success: false, error: 'MSI 文件下载失败' };
+        console.log('[UGS] MSI file not found');
+        return { success: false, error: 'MSI 文件下载失败', path: null };
       }
 
       const stats = fs.statSync(msiPath);
-      console.log('[UGS] MSI 文件大小:', stats.size);
+      console.log('[UGS] MSI file size:', stats.size);
 
-      console.log('[UGS] 启动 msiexec 安装');
+      console.log('[UGS] Starting msiexec install');
       const { spawn } = await import('child_process');
       spawn('msiexec.exe', ['/i', msiPath], {
         detached: true,
         stdio: 'ignore',
       }).unref();
 
-      return { success: true };
+      return { success: true, path: msiPath };
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      console.log('[UGS] 安装异常:', errorMsg);
-      return { success: false, error: '安装失败: ' + errorMsg };
+      console.log('[UGS] Install error:', errorMsg);
+      return { success: false, error: '安装失败: ' + errorMsg, path: null };
     }
   });
 }
