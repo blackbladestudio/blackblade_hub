@@ -1,6 +1,6 @@
 {
   "name": "blackblade-hub",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "BlackBlade Hub - 工作室统一工作台",
   "main": "dist/main/index.js",
   "scripts": {
