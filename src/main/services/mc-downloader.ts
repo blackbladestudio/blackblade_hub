@@ -17,7 +17,29 @@ function findMcBinary(): string {
 
 function buildEndpointUrl(config: MinioConfig): string {
   const url = new URL(config.endpoint);
-  return `${url.protocol}//${config.accessKey}:${config.secretKey}@${url.host}`;
+  let host = url.hostname;
+  if (url.port) {
+    host += `:${url.port}`;
+  }
+  let endpoint = `${url.protocol}//${host}`;
+  if (url.pathname && url.pathname !== '/') {
+    endpoint += url.pathname.replace(/\/$/, '');
+  }
+  return endpoint;
+}
+
+async function setupAlias(mc: string, config: MinioConfig): Promise<void> {
+  const endpoint = buildEndpointUrl(config);
+  return new Promise((resolve, reject) => {
+    const args = ['alias', 'set', MC_ALIAS, endpoint, config.accessKey, config.secretKey];
+    const child = spawn(mc, args, { windowsHide: true });
+    let stderr = '';
+    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    child.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`mc alias set failed: ${stderr}`));
+    });
+  });
 }
 
 /**
@@ -43,17 +65,11 @@ export async function mcMirror(
 ): Promise<void> {
   const mc = findMcBinary();
 
-  // mc supports inline credentials via the MC_HOST_<alias> env var,
-  // so we don't need a persistent `mc alias set` call.
-  const hostEnv = `MC_HOST_${MC_ALIAS}`;
-  const env = { ...process.env, [hostEnv]: buildEndpointUrl(minioConfig) };
+  await setupAlias(mc, minioConfig);
 
-  // Normalize: strip trailing slashes from prefix, then add one trailing slash
-  // so mc mirrors the contents, not a bucket-level path.
-  const normalizedPrefix = prefix.replace(/\/+$/, '') + '/';
+  const normalizedPrefix = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix;
   const remotePath = `${MC_ALIAS}/${bucket}/${normalizedPrefix}`;
 
-  // Clean and prepare the destination directory BEFORE spawning mc
   if (fs.existsSync(localDir)) {
     fs.rmSync(localDir, { recursive: true, force: true });
   }
@@ -65,7 +81,6 @@ export async function mcMirror(
     let child: ChildProcess;
     try {
       child = spawn(mc, args, {
-        env,
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
       });
