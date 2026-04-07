@@ -52,4 +52,10 @@ export interface StudioHubAPI {
   launcherTestConnection(): Promise<LaunchResult>;
   launcherSelectInstallDir(): Promise<string | null>;
   onLauncherProgress(callback: (progress: DownloadProgress) => void): void;
+
+  // UGS
+  ugsCheckInstalled(): Promise<{ installed: boolean; path: string | null }>;
+  ugsLaunch(): Promise<LaunchResult>;
+  ugsOpenDownload(): Promise<void>;
+  ugsDownloadAndInstall(): Promise<LaunchResult>;
 }

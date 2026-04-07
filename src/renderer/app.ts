@@ -1,7 +1,7 @@
 import type { AppConfig } from '../types/config';
 import type { StudioHubAPI } from '../types/ipc';
 import { initLaunch, renderToolsColumn } from './modules/launch';
-import { initPipeline } from './modules/pipeline';
+import { initPipeline, refreshUgsStatus } from './modules/pipeline';
 import { initToolbox, refreshHordeAgentStatus } from './modules/toolbox';
 import { initConfigModal } from './modules/config-modal';
 import { initLogPanel, appendLog } from './modules/log-panel';
@@ -19,7 +19,6 @@ let config: AppConfig = {
   tools: [],
   jenkins: '',
   horde: '',
-  ugs: '',
   envScript: '',
   minio: { endpoint: 'http://10.248.15.20:9000', accessKey: '', secretKey: '', bucket: 'builds-client' },
   launcher: { installDir: '', prefix: '', exeRelativePath: '' },
@@ -48,7 +47,6 @@ function renderUI(): void {
   const pipelineMap = [
     { key: 'jenkins', val: config.jenkins },
     { key: 'horde', val: config.horde },
-    { key: 'ugs', val: config.ugs },
     { key: 'env', val: config.envScript },
   ];
 
@@ -60,6 +58,7 @@ function renderUI(): void {
   }
 
   refreshHordeAgentStatus();
+  refreshUgsStatus();
 }
 
 window.addEventListener('DOMContentLoaded', async () => {

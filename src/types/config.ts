@@ -24,7 +24,6 @@ export interface AppConfig {
   tools: ToolEntry[];
   jenkins: string;
   horde: string;
-  ugs: string;
   envScript: string;
   hordeAgentScript?: string;
   minio: MinioConfig;
@@ -37,7 +36,6 @@ export const DEFAULT_CONFIG: AppConfig = {
   tools: [],
   jenkins: '',
   horde: '',
-  ugs: '',
   envScript: '',
   minio: {
     endpoint: 'http://10.248.15.20:9000',

@@ -23,7 +23,6 @@ export function initConfigModal(
 
   document.getElementById('btn-browse-game')!.addEventListener('click', () => browseFile('cfg-game'));
   document.getElementById('btn-browse-editor')!.addEventListener('click', () => browseFile('cfg-editor'));
-  document.getElementById('btn-browse-ugs')!.addEventListener('click', () => browseFile('cfg-ugs'));
   document.getElementById('btn-browse-env')!.addEventListener('click', () => browseFile('cfg-env'));
 
   document.getElementById('btn-browse-install-dir')!.addEventListener('click', async () => {
@@ -46,7 +45,6 @@ function openConfig(): void {
   (document.getElementById('cfg-editor') as HTMLInputElement).value = config.editorExe || '';
   (document.getElementById('cfg-jenkins') as HTMLInputElement).value = config.jenkins || '';
   (document.getElementById('cfg-horde') as HTMLInputElement).value = config.horde || '';
-  (document.getElementById('cfg-ugs') as HTMLInputElement).value = config.ugs || '';
   (document.getElementById('cfg-env') as HTMLInputElement).value = config.envScript || '';
 
   const minio = config.minio || { endpoint: '', accessKey: '', secretKey: '', bucket: '' };
@@ -127,7 +125,6 @@ async function saveConfig(): Promise<void> {
     tools,
     jenkins: (document.getElementById('cfg-jenkins') as HTMLInputElement).value.trim(),
     horde: (document.getElementById('cfg-horde') as HTMLInputElement).value.trim(),
-    ugs: (document.getElementById('cfg-ugs') as HTMLInputElement).value.trim(),
     envScript: (document.getElementById('cfg-env') as HTMLInputElement).value.trim(),
     minio: {
       endpoint: (document.getElementById('cfg-minio-endpoint') as HTMLInputElement).value.trim(),

@@ -4,7 +4,7 @@ import { showLogPanel } from './log-panel';
 
 export function initPipeline(getConfig: () => AppConfig): void {
   document.getElementById('card-ugs')!.addEventListener('click', () =>
-    handlePipeline('ugs', getConfig()),
+    handleUgsClick(),
   );
   document.getElementById('card-jenkins')!.addEventListener('click', () =>
     handlePipeline('jenkins', getConfig()),
@@ -17,16 +17,62 @@ export function initPipeline(getConfig: () => AppConfig): void {
   );
 }
 
+export async function refreshUgsStatus(): Promise<void> {
+  const card = document.getElementById('card-ugs');
+  const dot = document.getElementById('dot-ugs');
+
+  const result = await window.studioHub.ugsCheckInstalled();
+  console.log('[UGS] refreshUgsStatus - installed?', result.installed, 'path:', result.path);
+
+  if (card) {
+    card.classList.toggle('disabled', !result.installed);
+  }
+  if (dot) {
+    dot.className = result.installed ? 'pipeline-status-dot ready' : 'pipeline-status-dot';
+  }
+}
+
 function getConfigValue(config: AppConfig, type: string): string {
   switch (type) {
     case 'jenkins':
       return config.jenkins;
     case 'horde':
       return config.horde;
-    case 'ugs':
-      return config.ugs;
     default:
       return '';
+  }
+}
+
+async function handleUgsClick(): Promise<void> {
+  setStatus('warning', '正在检查 UGS 安装状态...');
+  const result = await window.studioHub.ugsCheckInstalled();
+
+  if (result.installed) {
+    setStatus('warning', '正在启动 UGS...');
+    const launchResult = await window.studioHub.ugsLaunch();
+    if (launchResult.success) {
+      toast('UGS 已启动');
+      setStatus('ok', '就绪');
+    } else {
+      toast('启动失败: ' + (launchResult.error || '未知错误'));
+      setStatus('error', '启动失败');
+    }
+  } else {
+    const install = confirm('Unreal Game Sync (UGS) 未安装。\n\n是否下载并安装？');
+    if (install) {
+      setStatus('warning', '正在下载并安装 UGS...');
+      const installResult = await window.studioHub.ugsDownloadAndInstall();
+      if (installResult.success) {
+        toast('UGS 安装已启动，请在安装完成后重新点击');
+        await refreshUgsStatus();
+        setStatus('ok', '就绪');
+      } else {
+        toast('安装失败: ' + (installResult.error || '未知错误'));
+        setStatus('error', '安装失败');
+      }
+    } else {
+      setStatus('ok', '就绪');
+    }
   }
 }
 

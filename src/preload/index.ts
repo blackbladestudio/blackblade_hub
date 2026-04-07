@@ -29,6 +29,12 @@ const api: StudioHubAPI = {
   onLauncherProgress: (callback) => {
     ipcRenderer.on('launcher-progress', (_e, progress) => callback(progress));
   },
+
+  // UGS
+  ugsCheckInstalled: () => ipcRenderer.invoke('ugs:check-installed'),
+  ugsLaunch: () => ipcRenderer.invoke('ugs:launch'),
+  ugsOpenDownload: () => ipcRenderer.invoke('ugs:open-download'),
+  ugsDownloadAndInstall: () => ipcRenderer.invoke('ugs:download-and-install'),
 };
 
 contextBridge.exposeInMainWorld('studioHub', api);

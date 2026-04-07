@@ -5,7 +5,7 @@ import { registerAllHandlers } from './ipc';
 
 let mainWindow: BrowserWindow | null = null;
 
-function getMainWindow(): BrowserWindow | null {
+export function getMainWindow(): BrowserWindow | null {
   return mainWindow;
 }
 
