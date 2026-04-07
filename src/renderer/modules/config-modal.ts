@@ -21,8 +21,11 @@ export function initConfigModal(
   document.getElementById('btn-cancel-config')!.addEventListener('click', closeConfig);
   document.getElementById('btn-add-tool')!.addEventListener('click', addToolEntry);
 
-  document.getElementById('btn-browse-game')!.addEventListener('click', () => browseFile('cfg-game'));
-  document.getElementById('btn-browse-editor')!.addEventListener('click', () => browseFile('cfg-editor'));
+  document.getElementById('btn-browse-uproject')!.addEventListener('click', async () => {
+    const input = document.getElementById('cfg-uproject') as HTMLInputElement;
+    const result = await window.studioHub.selectUproject();
+    if (result) input.value = result;
+  });
   document.getElementById('btn-browse-env')!.addEventListener('click', () => browseFile('cfg-env'));
 
   document.getElementById('btn-browse-install-dir')!.addEventListener('click', async () => {
@@ -41,8 +44,7 @@ export function initConfigModal(
 
 function openConfig(): void {
   const config = getConfigRef!();
-  (document.getElementById('cfg-game') as HTMLInputElement).value = config.gameExe || '';
-  (document.getElementById('cfg-editor') as HTMLInputElement).value = config.editorExe || '';
+  (document.getElementById('cfg-uproject') as HTMLInputElement).value = config.uprojectPath || '';
   (document.getElementById('cfg-jenkins') as HTMLInputElement).value = config.jenkins || '';
   (document.getElementById('cfg-horde') as HTMLInputElement).value = config.horde || '';
   (document.getElementById('cfg-env') as HTMLInputElement).value = config.envScript || '';
@@ -120,8 +122,7 @@ async function saveConfig(): Promise<void> {
     .filter((t) => t.label || t.path);
 
   const newCfg: AppConfig = {
-    gameExe: (document.getElementById('cfg-game') as HTMLInputElement).value.trim(),
-    editorExe: (document.getElementById('cfg-editor') as HTMLInputElement).value.trim(),
+    uprojectPath: (document.getElementById('cfg-uproject') as HTMLInputElement).value.trim(),
     tools,
     jenkins: (document.getElementById('cfg-jenkins') as HTMLInputElement).value.trim(),
     horde: (document.getElementById('cfg-horde') as HTMLInputElement).value.trim(),

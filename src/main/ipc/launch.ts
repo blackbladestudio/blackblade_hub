@@ -75,4 +75,51 @@ export function registerLaunchHandlers(getMainWindow: () => BrowserWindow | null
       return result.canceled ? null : result.filePaths[0];
     },
   );
+
+  ipcMain.handle('select-uproject', async () => {
+    const win = getMainWindow();
+    if (!win) return null;
+
+    const result = await dialog.showOpenDialog(win, {
+      properties: ['openFile'],
+      filters: [{ name: 'Unreal Project', extensions: ['uproject'] }],
+    });
+
+    return result.canceled ? null : result.filePaths[0];
+  });
+
+  ipcMain.handle(
+    'launch-editor',
+    async (_event: Electron.IpcMainInvokeEvent, uprojectPath: string): Promise<LaunchResult> => {
+      const resolved = resolvePath(uprojectPath);
+      if (!resolved || !fs.existsSync(resolved)) {
+        return { success: false, error: 'Project file not found: ' + resolved };
+      }
+
+      const editorPath = findUE5Editor(uprojectPath);
+      if (!editorPath) {
+        return { success: false, error: '未找到 UnrealEditor.exe，请确认工程目录结构正确（应有 Engine/Binaries/Win64/UnrealEditor.exe）' };
+      }
+
+      const child = spawn(editorPath, [resolved], {
+        stdio: 'ignore',
+        detached: true,
+        shell: false,
+        cwd: path.dirname(resolved),
+      });
+
+      child.unref();
+      return { success: true };
+    },
+  );
+}
+
+function findUE5Editor(uprojectPath: string): string | null {
+  const projectRoot = path.dirname(uprojectPath);
+  const gameRoot = path.dirname(projectRoot);
+  const editorPath = path.join(gameRoot, 'Engine', 'Binaries', 'Win64', 'UnrealEditor.exe');
+  if (fs.existsSync(editorPath)) {
+    return editorPath;
+  }
+  return null;
 }

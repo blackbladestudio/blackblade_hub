@@ -8,6 +8,8 @@ const api: StudioHubAPI = {
   runScript: (scriptPath) => ipcRenderer.invoke('run-script', scriptPath),
   launchApp: (appPath) => ipcRenderer.invoke('launch-app', appPath),
   selectFile: (defaultPath) => ipcRenderer.invoke('select-file', defaultPath),
+  selectUproject: () => ipcRenderer.invoke('select-uproject'),
+  launchEditor: (uprojectPath) => ipcRenderer.invoke('launch-editor', uprojectPath),
   onScriptLog: (callback) => {
     ipcRenderer.on('script-log', (_e, msg) => callback(msg));
   },

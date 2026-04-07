@@ -14,8 +14,7 @@ declare global {
 }
 
 let config: AppConfig = {
-  gameExe: '',
-  editorExe: '',
+  uprojectPath: '',
   tools: [],
   jenkins: '',
   horde: '',
@@ -39,9 +38,6 @@ async function loadAppConfig(): Promise<void> {
 }
 
 function renderUI(): void {
-  const editorEl = document.getElementById('launch-editor');
-  editorEl?.classList.toggle('disabled', !config.editorExe?.trim());
-
   renderToolsColumn(config);
 
   const pipelineMap = [

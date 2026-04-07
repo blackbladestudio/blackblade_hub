@@ -36,6 +36,8 @@ export interface StudioHubAPI {
   runScript(scriptPath: string): Promise<ScriptResult>;
   launchApp(appPath: string): Promise<LaunchResult>;
   selectFile(defaultPath?: string): Promise<string | null>;
+  selectUproject(): Promise<string | null>;
+  launchEditor(uprojectPath: string): Promise<LaunchResult>;
   onScriptLog(callback: (msg: ScriptLogMessage) => void): void;
   getHordeAgentStatus(): Promise<HordeAgentStatus>;
   startHordeAgent(): Promise<LaunchResult>;

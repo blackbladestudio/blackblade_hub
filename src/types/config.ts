@@ -19,8 +19,7 @@ export interface LauncherConfig {
 }
 
 export interface AppConfig {
-  gameExe: string;
-  editorExe: string;
+  uprojectPath: string;
   tools: ToolEntry[];
   jenkins: string;
   horde: string;
@@ -31,8 +30,7 @@ export interface AppConfig {
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
-  gameExe: '',
-  editorExe: '',
+  uprojectPath: '',
   tools: [],
   jenkins: '',
   horde: '',

@@ -393,7 +393,6 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 .launch-secondary.disabled {
   opacity: 0.35;
   cursor: not-allowed;
-  pointer-events: none;
 }
 .launch-secondary .launch-icon-wrap {
   background: var(--blue-dim);

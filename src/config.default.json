@@ -1,6 +1,5 @@
 {
-  "gameExe": "",
-  "editorExe": "",
+  "uprojectPath": "",
   "tools": [],
   "jenkins": "http://10.248.15.20:8080/",
   "horde": "http://10.248.15.20:13340",
