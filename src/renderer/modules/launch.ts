@@ -1,13 +1,13 @@
 import type { AppConfig } from '../../types/config';
 import { toast, setStatus, escHtml, addRipple } from '../utils';
 
-export function initLaunch(getConfigRef: () => AppConfig): void {
+export function initLaunch(getConfigRef: () => AppConfig, setConfigRef: (cfg: AppConfig) => void): void {
   const editorEl = document.getElementById('launch-editor')!;
-  editorEl.addEventListener('click', () => handleLaunch('editor', getConfigRef));
+  editorEl.addEventListener('click', () => handleLaunch('editor', getConfigRef, setConfigRef));
   editorEl.addEventListener('click', (e) => addRipple(editorEl, e));
 }
 
-async function handleLaunch(type: 'game' | 'editor', getConfig: () => AppConfig): Promise<void> {
+async function handleLaunch(type: 'game' | 'editor', getConfig: () => AppConfig, setConfig?: (cfg: AppConfig) => void): Promise<void> {
   const config = getConfig();
   if (type === 'editor') {
     if (!config.uprojectPath?.trim()) {
@@ -16,6 +16,7 @@ async function handleLaunch(type: 'game' | 'editor', getConfig: () => AppConfig)
       if (selected) {
         const newConfig = { ...config, uprojectPath: selected };
         await window.studioHub.saveConfig(newConfig);
+        setConfig?.(newConfig);
         const editorResult = await window.studioHub.launchEditor(selected);
         if (editorResult?.success) {
           toast('编辑器已启动');

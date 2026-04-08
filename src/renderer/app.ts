@@ -62,7 +62,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('startup-overlay')?.classList.add('hidden');
   }, 2200);
 
-  initLaunch(getConfig);
+  initLaunch(getConfig, setConfigAndRender);
   initPipeline(getConfig);
   initToolbox();
   initConfigModal(getConfig, setConfigAndRender);
