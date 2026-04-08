@@ -5,6 +5,13 @@ import { resolvePath } from '../utils';
 import type { MinioConfig } from '../../types/config';
 import type { GameVariant, DownloadProgress } from '../../types/launcher';
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+}
+
 const MC_ALIAS = 'bb';
 
 function findMcBinary(): string {
@@ -64,6 +71,7 @@ export async function mcMirror(
   onProgress: (p: DownloadProgress) => void,
 ): Promise<void> {
   const mc = findMcBinary();
+  const maxWorkers = minioConfig.maxWorkers ?? 16;
 
   await setupAlias(mc, minioConfig);
 
@@ -77,7 +85,7 @@ export async function mcMirror(
 
   return new Promise<void>((resolve, reject) => {
     // --no-color avoids ANSI escape codes mixing into JSON output on Windows
-    const args = ['mirror', '--overwrite', '--json', '--no-color', remotePath, localDir];
+    const args = ['mirror', '--overwrite', '--json', '--no-color', '--max-workers', String(maxWorkers), '--retry', '--summary', remotePath, localDir];
     let child: ChildProcess;
     try {
       child = spawn(mc, args, {
@@ -113,16 +121,22 @@ export async function mcMirror(
         try {
           const msg = JSON.parse(trimmed);
           if (msg.status === 'success') {
-            // size = this file's bytes; totalSize = cumulative bytes so far
             if (typeof msg.totalSize === 'number') transferredBytes = msg.totalSize;
             if (typeof msg.totalCount === 'number') transferredCount = msg.totalCount;
+
+            let percent = 0;
+            if (typeof msg.percent === 'number') {
+              percent = Math.floor(msg.percent);
+            } else if (typeof msg.total === 'number' && msg.total > 0 && typeof msg.size === 'number') {
+              percent = Math.min(99, Math.floor((msg.size / msg.total) * 100));
+            }
 
             onProgress({
               variant,
               phase: 'downloading',
               percent: 0,
               downloadedBytes: transferredBytes,
-              message: msg.target ? path.basename(String(msg.target)) : `${transferredCount} 文件已下载`,
+              message: `下载中 ${formatBytes(transferredBytes)}${transferredCount > 0 ? ' / ' + transferredCount + ' 文件' : ''}`,
             });
           } else if (msg.status === 'error') {
             errorCount++;
@@ -138,6 +152,8 @@ export async function mcMirror(
 
     child.stderr!.on('data', (chunk: Buffer) => {
       stderr += chunk.toString('utf-8');
+      const line = chunk.toString('utf-8').trim();
+      if (line) console.log('[mc-mirror]', line);
     });
 
     child.on('error', (err) => {

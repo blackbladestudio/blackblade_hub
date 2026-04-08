@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { app, BrowserWindow } from 'electron';
-import { spawn } from 'child_process';
+import { spawn, execSync, type ChildProcess } from 'child_process';
 import extract from 'extract-zip';
 import type {
   LauncherState,
@@ -16,6 +16,7 @@ import { mcMirror } from './mc-downloader';
 
 const APP_NAME = 'BlackBlade Hub';
 const STATE_FILE = 'launcher-state.json';
+const activePids: Map<GameVariant, { pid: number; exePath: string }> = new Map();
 
 function getStatePath(): string {
   const appData =
@@ -62,8 +63,12 @@ function emitProgress(win: BrowserWindow | null, progress: DownloadProgress): vo
 // ---------------------------------------------------------------------------
 
 function findExeInDirectory(dir: string): string | null {
-  const exeFiles: string[] = [];
-  function walk(d: string): void {
+  let rootExe: string | null = null;
+  let binariesExe: string | null = null;
+  const allExes: string[] = [];
+
+  function walk(d: string, depth: number): void {
+    if (depth > 2) return;
     let entries: fs.Dirent[];
     try {
       entries = fs.readdirSync(d, { withFileTypes: true });
@@ -71,29 +76,36 @@ function findExeInDirectory(dir: string): string | null {
       return;
     }
     for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
       const full = path.join(d, entry.name);
       if (entry.isDirectory()) {
-        walk(full);
+        walk(full, depth + 1);
       } else if (entry.name.toLowerCase().endsWith('.exe')) {
-        exeFiles.push(full);
+        const rel = path.relative(dir, full);
+        const parts = rel.split(path.sep);
+        if (depth === 0 && parts.length === 1) {
+          rootExe = full;
+        } else if (/^Binaries[/\\]Win64[/\\]/i.test(rel)) {
+          binariesExe = full;
+        } else {
+          allExes.push(full);
+        }
       }
     }
   }
-  walk(dir);
+  walk(dir, 0);
 
-  // Prefer .exe in a Binaries directory (Unreal convention)
-  const inBinaries = exeFiles.find((f) => /[/\\]Binaries[/\\]/i.test(f));
-  if (inBinaries) return inBinaries;
-  // Otherwise, prefer the largest .exe (likely the game itself, not small tools)
-  if (exeFiles.length === 0) return null;
-  exeFiles.sort((a, b) => {
+  if (rootExe) return rootExe;
+  if (binariesExe) return binariesExe;
+  if (allExes.length === 0) return null;
+  allExes.sort((a, b) => {
     try {
       return fs.statSync(b).size - fs.statSync(a).size;
     } catch {
       return 0;
     }
   });
-  return exeFiles[0];
+  return allExes[0];
 }
 
 // ---------------------------------------------------------------------------
@@ -108,12 +120,32 @@ async function installDirectoryBuild(
   win: BrowserWindow | null,
 ): Promise<void> {
   const { variant, objectKey: prefix } = build;
+  const totalSize = build.size;
 
   emitProgress(win, { variant, phase: 'downloading', percent: 0, message: '正在下载...' });
 
   await mcMirror(minioConfig, bucket, prefix, installDir, variant, (p) => {
-    emitProgress(win, p);
+    if (p.phase === 'downloading') {
+      emitProgress(win, {
+        ...p,
+        downloadedBytes: p.downloadedBytes,
+        totalBytes: totalSize > 0 ? totalSize : undefined,
+        percent: (totalSize > 0 && p.downloadedBytes)
+          ? Math.min(99, Math.floor((p.downloadedBytes / totalSize) * 100))
+          : 0,
+        message: p.message || (p.downloadedBytes ? formatBytes(p.downloadedBytes) + ' 已下载' : '下载中'),
+      });
+    } else {
+      emitProgress(win, p);
+    }
   });
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
 }
 
 // ---------------------------------------------------------------------------
@@ -224,6 +256,7 @@ export async function installBuild(
       const detected = findExeInDirectory(installDir);
       exePath = detected || path.join(installDir, 'Game.exe');
     }
+    console.log('[launcher] detected exe:', exePath, 'exists:', fs.existsSync(exePath));
 
     const installed: InstalledBuild = {
       version: build.version,
@@ -259,20 +292,79 @@ export function uninstallBuild(variant: GameVariant): void {
   saveState(state);
 }
 
-export function launchBuild(variant: GameVariant): void {
+export function launchBuild(variant: GameVariant): number {
   const state = loadState();
   const installed = state.installed[variant];
   if (!installed) throw new Error('游戏未安装');
   if (!fs.existsSync(installed.installDir))
     throw new Error('安装目录不存在: ' + installed.installDir);
-  if (!fs.existsSync(installed.exePath))
-    throw new Error('可执行文件不存在: ' + installed.exePath);
 
-  const child = spawn(installed.exePath, [], {
-    cwd: path.dirname(installed.exePath),
+  let exeToLaunch = installed.exePath;
+  const preferRoot = path.join(installed.installDir, 'SEFVGame.exe');
+  if (fs.existsSync(preferRoot)) {
+    exeToLaunch = preferRoot;
+    if (installed.exePath !== exeToLaunch) {
+      installed.exePath = exeToLaunch;
+      saveState(state);
+    }
+  }
+  if (!fs.existsSync(exeToLaunch))
+    throw new Error('可执行文件不存在: ' + exeToLaunch);
+
+  console.log('[launcher] launching:', exeToLaunch, 'cwd:', installed.installDir);
+
+  const child = spawn(exeToLaunch, [], {
+    cwd: installed.installDir,
     detached: true,
     stdio: 'ignore',
     shell: false,
   });
+
+  child.on('error', (err) => {
+    console.error('[launcher] spawn error:', err.message);
+    activePids.delete(variant);
+  });
+
+  child.on('exit', (code, signal) => {
+    if (code !== null && code !== 0) {
+      console.warn('[launcher] process exited with code:', code, 'signal:', signal);
+    }
+    activePids.delete(variant);
+  });
+
   child.unref();
+  const pid = child.pid ?? 0;
+  activePids.set(variant, { pid, exePath: exeToLaunch });
+  return pid;
+}
+
+export function checkRunning(variant: GameVariant): boolean {
+  const entry = activePids.get(variant);
+  if (!entry) return false;
+  try {
+    process.kill(entry.pid, 0);
+    return true;
+  } catch {
+    activePids.delete(variant);
+    return false;
+  }
+}
+
+export function stopBuild(variant: GameVariant): boolean {
+  const entry = activePids.get(variant);
+  if (!entry) return false;
+  try {
+    execSync(`taskkill /T /F /PID ${entry.pid}`, { windowsHide: true, timeout: 5000 });
+    activePids.delete(variant);
+    return true;
+  } catch {
+    try {
+      process.kill(entry.pid, 0);
+      activePids.delete(variant);
+      return false;
+    } catch {
+      activePids.delete(variant);
+      return true;
+    }
+  }
 }

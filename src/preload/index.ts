@@ -28,7 +28,10 @@ const api: StudioHubAPI = {
   launcherUninstall: (variant) => ipcRenderer.invoke('launcher:uninstall', variant),
   launcherTestConnection: () => ipcRenderer.invoke('launcher:test-connection'),
   launcherSelectInstallDir: () => ipcRenderer.invoke('launcher:select-install-dir'),
-  onLauncherProgress: (callback) => {
+  launcherOpenInstallDir: (variant) => ipcRenderer.invoke('launcher:open-install-dir', variant),
+  launcherCheckRunning: (variant) => ipcRenderer.invoke('launcher:check-running', variant),
+  launcherStop: (variant) => ipcRenderer.invoke('launcher:stop', variant),
+  onLauncherProgress(callback) {
     ipcRenderer.on('launcher-progress', (_e, progress) => callback(progress));
   },
 

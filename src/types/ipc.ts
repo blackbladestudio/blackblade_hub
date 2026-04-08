@@ -11,6 +11,7 @@ export interface LaunchResult {
   success: boolean;
   error?: string;
   path?: string;
+  pid?: number;
 }
 
 export interface HordeAgentStatus {
@@ -54,6 +55,9 @@ export interface StudioHubAPI {
   launcherUninstall(variant: GameVariant): Promise<LaunchResult>;
   launcherTestConnection(): Promise<LaunchResult>;
   launcherSelectInstallDir(): Promise<string | null>;
+  launcherOpenInstallDir(variant: GameVariant): Promise<{ success: boolean; error?: string }>;
+  launcherCheckRunning(variant: GameVariant): Promise<boolean>;
+  launcherStop(variant: GameVariant): Promise<{ success: boolean; error?: string }>;
   onLauncherProgress(callback: (progress: DownloadProgress) => void): void;
 
   // UGS

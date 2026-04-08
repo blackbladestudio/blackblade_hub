@@ -49,12 +49,13 @@ function openConfig(): void {
   (document.getElementById('cfg-horde') as HTMLInputElement).value = config.horde || '';
   (document.getElementById('cfg-env') as HTMLInputElement).value = config.envScript || '';
 
-  const minio = config.minio || { endpoint: '', accessKey: '', secretKey: '', bucket: '' };
+  const minio = config.minio || { endpoint: '', accessKey: '', secretKey: '', bucket: '', maxWorkers: undefined };
   const launcher = config.launcher || { installDir: '', prefix: '', exeRelativePath: '' };
   (document.getElementById('cfg-minio-endpoint') as HTMLInputElement).value = minio.endpoint || '';
   (document.getElementById('cfg-minio-access-key') as HTMLInputElement).value = minio.accessKey || '';
   (document.getElementById('cfg-minio-secret-key') as HTMLInputElement).value = minio.secretKey || '';
   (document.getElementById('cfg-minio-bucket') as HTMLInputElement).value = minio.bucket || 'builds-client';
+  (document.getElementById('cfg-minio-workers') as HTMLInputElement).value = minio.maxWorkers ? String(minio.maxWorkers) : '';
   (document.getElementById('cfg-launcher-prefix') as HTMLInputElement).value = launcher.prefix || '';
   (document.getElementById('cfg-launcher-exe') as HTMLInputElement).value = launcher.exeRelativePath || '';
   (document.getElementById('cfg-launcher-install-dir') as HTMLInputElement).value = launcher.installDir || '';
@@ -132,6 +133,7 @@ async function saveConfig(): Promise<void> {
       accessKey: (document.getElementById('cfg-minio-access-key') as HTMLInputElement).value.trim(),
       secretKey: (document.getElementById('cfg-minio-secret-key') as HTMLInputElement).value.trim(),
       bucket: (document.getElementById('cfg-minio-bucket') as HTMLInputElement).value.trim() || 'builds-client',
+      maxWorkers: parseInt((document.getElementById('cfg-minio-workers') as HTMLInputElement).value) || undefined,
     },
     launcher: {
       installDir: (document.getElementById('cfg-launcher-install-dir') as HTMLInputElement).value.trim(),

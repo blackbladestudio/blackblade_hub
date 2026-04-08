@@ -8,8 +8,8 @@
   "hordeAgentScript": "tools/install_horde_agent.ps1",
   "minio": {
     "endpoint": "http://10.248.15.20:9000",
-    "accessKey": "",
-    "secretKey": "",
+    "accessKey": "guest",
+    "secretKey": "12345678",
     "bucket": "builds-client"
   },
   "launcher": {

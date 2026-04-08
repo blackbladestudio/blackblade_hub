@@ -8,6 +8,7 @@ export interface MinioConfig {
   accessKey: string;
   secretKey: string;
   bucket: string;
+  maxWorkers?: number;
 }
 
 export interface LauncherConfig {

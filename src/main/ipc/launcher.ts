@@ -1,4 +1,4 @@
-import { ipcMain, dialog, BrowserWindow } from 'electron';
+import { ipcMain, dialog, BrowserWindow, shell } from 'electron';
 import { loadConfig } from '../config';
 import * as minioClient from '../services/minio-client';
 import * as gameManager from '../services/game-manager';
@@ -66,8 +66,21 @@ export function registerLauncherHandlers(getMainWindow: () => BrowserWindow | nu
 
   ipcMain.handle('launcher:launch', async (_event, variant: GameVariant) => {
     try {
-      gameManager.launchBuild(variant);
-      return { success: true };
+      const pid = gameManager.launchBuild(variant);
+      return { success: true, pid };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('launcher:check-running', async (_event, variant: GameVariant) => {
+    return gameManager.checkRunning(variant);
+  });
+
+  ipcMain.handle('launcher:stop', async (_event, variant: GameVariant) => {
+    try {
+      const stopped = gameManager.stopBuild(variant);
+      return { success: stopped };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
@@ -87,5 +100,20 @@ export function registerLauncherHandlers(getMainWindow: () => BrowserWindow | nu
     if (!win) return null;
     const result = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
     return result.canceled ? null : result.filePaths[0];
+  });
+
+  ipcMain.handle('launcher:open-install-dir', async (_event, variant: GameVariant) => {
+    try {
+      const state = gameManager.loadState();
+      const installed = state.installed[variant];
+      if (!installed) return { success: false, error: '游戏未安装' };
+      if (!installed.installDir || !require('fs').existsSync(installed.installDir)) {
+        return { success: false, error: '安装目录不存在' };
+      }
+      shell.openPath(installed.installDir);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
   });
 }

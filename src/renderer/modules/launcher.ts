@@ -9,11 +9,39 @@ import type {
 } from '../../types/launcher';
 import { toast, setStatus } from '../utils';
 
-let currentVariant: GameVariant = 'Shipping';
+let currentVariant: GameVariant = 'Development';
 let manifest: LauncherManifest | null = null;
 let state: LauncherState | null = null;
 let isInstalling = false;
 let getConfigRef: (() => AppConfig) | null = null;
+let runningVariants: Set<GameVariant> = new Set();
+let pollInterval: ReturnType<typeof setInterval> | null = null;
+let mainPollInterval: ReturnType<typeof setInterval> | null = null;
+
+async function pollRunningStatus(): Promise<void> {
+  const variants: GameVariant[] = ['Development', 'Testing', 'Shipping'];
+  for (const v of variants) {
+    const isRunning = await window.studioHub.launcherCheckRunning(v);
+    if (isRunning) {
+      runningVariants.add(v);
+    } else {
+      runningVariants.delete(v);
+    }
+  }
+  updateLaunchButtonState();
+}
+
+function updateLaunchButtonState(): void {
+  const isRunning = runningVariants.has(currentVariant);
+  const btnLaunch = document.getElementById('launcher-btn-launch') as HTMLElement;
+  if (isRunning) {
+    btnLaunch.textContent = '⏹ 停止游戏';
+    btnLaunch.classList.add('running');
+  } else {
+    btnLaunch.textContent = '▶ 启动游戏';
+    btnLaunch.classList.remove('running');
+  }
+}
 
 export function initLauncher(getConfig: () => AppConfig): void {
   getConfigRef = getConfig;
@@ -42,11 +70,12 @@ export function initLauncher(getConfig: () => AppConfig): void {
   document.getElementById('launcher-btn-update')!.addEventListener('click', handleInstall);
   document.getElementById('launcher-btn-uninstall')!.addEventListener('click', handleUninstall);
   document.getElementById('launcher-btn-browse-dir')!.addEventListener('click', handleBrowseDir);
+  document.getElementById('launcher-btn-open-dir')!.addEventListener('click', handleOpenDir);
 
   window.studioHub.onLauncherProgress(handleProgress);
 
-  // Load initial state to update the game card on the main screen
   refreshGameCardStatus();
+  mainPollInterval = setInterval(refreshGameCardStatus, 5000);
 }
 
 /**
@@ -55,17 +84,34 @@ export function initLauncher(getConfig: () => AppConfig): void {
  */
 export async function refreshGameCardStatus(): Promise<void> {
   state = await window.studioHub.launcherGetState();
+  const cardEl = document.getElementById('launch-game-play')!;
+  const iconEl = cardEl.querySelector('.launch-icon-wrap') as HTMLElement;
+  const nameEl = cardEl.querySelector('.launch-name') as HTMLElement;
   const statusEl = document.getElementById('launch-game-status')!;
 
-  const firstInstalled = (['Shipping', 'Development', 'Testing'] as GameVariant[])
+  const firstInstalled = (['Development', 'Testing', 'Shipping'] as GameVariant[])
     .find((v) => state?.installed[v]);
 
   if (firstInstalled && state?.installed[firstInstalled]) {
     const b = state.installed[firstInstalled]!;
-    statusEl.textContent = `${firstInstalled}  ${b.version} (${b.buildNumber})`;
-    statusEl.className = 'launch-game-status installed';
+    const isRunning = await window.studioHub.launcherCheckRunning(firstInstalled);
+    cardEl.classList.toggle('running', isRunning);
+    if (isRunning) {
+      iconEl.textContent = '⏹';
+      nameEl.textContent = '停止游戏';
+      statusEl.textContent = `${firstInstalled} 运行中`;
+      statusEl.className = 'launch-game-status installed';
+    } else {
+      iconEl.textContent = '▶';
+      nameEl.textContent = '启动游戏';
+      statusEl.textContent = `${firstInstalled} ${b.version} ${b.buildNumber}`;
+      statusEl.className = 'launch-game-status installed';
+    }
     currentVariant = firstInstalled;
   } else {
+    cardEl.classList.remove('running');
+    iconEl.textContent = '▶';
+    nameEl.textContent = '启动游戏';
     statusEl.textContent = '未安装 — 点击管理安装游戏';
     statusEl.className = 'launch-game-status not-installed';
   }
@@ -77,11 +123,19 @@ export async function refreshGameCardStatus(): Promise<void> {
 async function handlePlayFromCard(): Promise<void> {
   if (!state) state = await window.studioHub.launcherGetState();
 
-  const variant = (['Shipping', 'Development', 'Testing'] as GameVariant[])
+  const variant = (['Development', 'Testing', 'Shipping'] as GameVariant[])
     .find((v) => state?.installed[v]);
 
   if (!variant) {
     showLauncherPage();
+    return;
+  }
+
+  const isRunning = await window.studioHub.launcherCheckRunning(variant);
+  if (isRunning) {
+    const result = await window.studioHub.launcherStop(variant);
+    if (result.success) toast('游戏已停止');
+    await refreshGameCardStatus();
     return;
   }
 
@@ -94,15 +148,22 @@ async function handlePlayFromCard(): Promise<void> {
     toast(`启动失败: ${result.error}`);
     setStatus('error', '启动失败');
   }
+  await refreshGameCardStatus();
 }
 
 async function showLauncherPage(): Promise<void> {
   document.getElementById('launcher-page')!.classList.remove('page-hidden');
   await refreshLauncherData();
+  await pollRunningStatus();
+  pollInterval = setInterval(pollRunningStatus, 3000);
 }
 
 function hideLauncherPage(): void {
   document.getElementById('launcher-page')!.classList.add('page-hidden');
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+  }
 }
 
 async function refreshLauncherData(): Promise<void> {
@@ -154,7 +215,7 @@ async function refreshLauncherData(): Promise<void> {
   if (manifest && manifest.builds.length > 0) {
     connDot.className = 'status-dot';
     connText.textContent = '已连接';
-    renderVariant();
+    renderVariant(currentVariant);
   } else {
     connDot.className = 'status-dot';
     connText.textContent = '已连接 · 无构建';
@@ -167,7 +228,7 @@ function selectVariant(variant: GameVariant): void {
   document.querySelectorAll('#launcher-tabs .launcher-tab').forEach((tab) => {
     tab.classList.toggle('active', tab.getAttribute('data-variant') === variant);
   });
-  renderVariant();
+  refreshLauncherData();
 }
 
 function getLatestBuild(variant: GameVariant): BuildInfo | null {
@@ -201,13 +262,13 @@ function showPanel(panel: 'not-configured' | 'no-builds' | 'details'): void {
 }
 
 function hideAllActions(): void {
-  ['launcher-btn-install', 'launcher-btn-launch', 'launcher-btn-update', 'launcher-btn-uninstall']
+  ['launcher-btn-install', 'launcher-btn-launch', 'launcher-btn-update', 'launcher-btn-uninstall', 'launcher-btn-open-dir']
     .forEach((id) => ((document.getElementById(id) as HTMLElement).style.display = 'none'));
 }
 
-function renderVariant(): void {
-  const build = getLatestBuild(currentVariant);
-  const installed = getInstalledBuild(currentVariant);
+function renderVariant(variant: GameVariant): void {
+  const build = getLatestBuild(variant);
+  const installed = getInstalledBuild(variant);
 
   if (!build) {
     showPanel('no-builds');
@@ -234,7 +295,7 @@ function renderVariant(): void {
   if (installed) {
     localInfoEl.style.display = '';
     document.getElementById('launcher-local-version')!.textContent =
-      `${installed.version} (${installed.buildNumber})`;
+      `${installed.version} ${installed.buildNumber}`;
     document.getElementById('launcher-local-time')!.textContent = formatDate(installed.installedAt);
     document.getElementById('launcher-local-size')!.textContent = formatBytes(installed.size);
   } else {
@@ -253,13 +314,15 @@ function renderVariant(): void {
 
   if (!installed) {
     btnInstall.style.display = '';
-    btnLaunch.style.display = 'none';
     btnUpdate.style.display = 'none';
+    btnLaunch.style.display = 'none';
     btnUninstall.style.display = 'none';
+    document.getElementById('launcher-btn-open-dir')!.style.display = 'none';
   } else {
     btnInstall.style.display = 'none';
     btnLaunch.style.display = '';
     btnUninstall.style.display = '';
+    document.getElementById('launcher-btn-open-dir')!.style.display = '';
     const hasUpdate =
       installed.version !== build.version || installed.buildNumber !== build.buildNumber;
     btnUpdate.style.display = hasUpdate ? '' : 'none';
@@ -297,14 +360,27 @@ async function handleInstall(): Promise<void> {
   hideProgressBar();
   await refreshLauncherData();
   await refreshGameCardStatus();
+  await pollRunningStatus();
 }
 
 async function handleLaunch(): Promise<void> {
+  const isRunning = runningVariants.has(currentVariant);
+  if (isRunning) {
+    const result = await window.studioHub.launcherStop(currentVariant);
+    if (result.success) {
+      toast('游戏已停止');
+    } else {
+      toast('停止游戏失败');
+    }
+    await pollRunningStatus();
+    return;
+  }
   setStatus('warning', '正在启动游戏...');
   const result = await window.studioHub.launcherLaunch(currentVariant);
   if (result.success) {
     toast('游戏已启动');
     setStatus('ok', '就绪');
+    await pollRunningStatus();
   } else {
     toast(`启动失败: ${result.error}`);
     setStatus('error', '启动失败');
@@ -333,8 +409,14 @@ async function handleBrowseDir(): Promise<void> {
     launcher: { ...config.launcher, installDir: dir },
   };
   await window.studioHub.saveConfig(updated);
-  // Reflect the change back so subsequent getConfig() calls see it
   Object.assign(config, updated);
+}
+
+async function handleOpenDir(): Promise<void> {
+  const result = await window.studioHub.launcherOpenInstallDir(currentVariant);
+  if (!result.success) {
+    toast('打开目录失败: ' + result.error);
+  }
 }
 
 // --- Progress ---
@@ -354,8 +436,6 @@ function hideProgressBar(): void {
 }
 
 function handleProgress(progress: DownloadProgress): void {
-  if (progress.variant !== currentVariant) return;
-
   const fill = document.getElementById('launcher-progress-fill') as HTMLElement;
   const label = document.getElementById('launcher-progress-label')!;
   const detail = document.getElementById('launcher-progress-detail')!;
@@ -365,10 +445,16 @@ function handleProgress(progress: DownloadProgress): void {
   switch (progress.phase) {
     case 'downloading':
       label.textContent = `下载中... ${progress.percent}%`;
-      if (progress.downloadedBytes != null && progress.totalBytes) {
-        const speed = progress.speed ? formatBytes(Math.round(progress.speed)) + '/s' : '';
-        detail.textContent =
-          `${formatBytes(progress.downloadedBytes)} / ${formatBytes(progress.totalBytes)}  ${speed}`;
+      if (progress.downloadedBytes != null) {
+        const downloadedStr = formatBytes(progress.downloadedBytes);
+        if (progress.totalBytes) {
+          const speed = progress.speed ? formatBytes(Math.round(progress.speed)) + '/s' : '';
+          detail.textContent = `${downloadedStr} / ${formatBytes(progress.totalBytes)}  ${speed}`;
+        } else {
+          detail.textContent = downloadedStr + ' 已下载';
+        }
+      } else {
+        detail.textContent = progress.message || '下载中';
       }
       break;
     case 'extracting':

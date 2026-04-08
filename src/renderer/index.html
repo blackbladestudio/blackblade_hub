@@ -189,9 +189,9 @@
   <div class="launcher-content">
     <!-- Variant Tabs -->
     <div class="launcher-tabs" id="launcher-tabs">
-      <button class="launcher-tab active" data-variant="Shipping">Shipping</button>
-      <button class="launcher-tab" data-variant="Development">Development</button>
+      <button class="launcher-tab active" data-variant="Development">Development</button>
       <button class="launcher-tab" data-variant="Testing">Testing</button>
+      <button class="launcher-tab" data-variant="Shipping">Shipping</button>
     </div>
 
     <!-- Build Info -->
@@ -264,6 +264,7 @@
       <button class="launcher-btn launcher-btn-launch" id="launcher-btn-launch" style="display:none">▶ 启动游戏</button>
       <button class="launcher-btn launcher-btn-update" id="launcher-btn-update" style="display:none">🔄 更新</button>
       <button class="launcher-btn launcher-btn-uninstall" id="launcher-btn-uninstall" style="display:none">卸载</button>
+      <button class="launcher-btn launcher-btn-open-dir" id="launcher-btn-open-dir" style="display:none" title="打开目录">📁</button>
     </div>
 
     <!-- Install Dir -->
@@ -402,6 +403,11 @@
       <div class="cfg-row">
         <label>存储桶</label>
         <input class="cfg-input" id="cfg-minio-bucket" type="text" placeholder="build_client" />
+      </div>
+
+      <div class="cfg-row">
+        <label>下载并发数</label>
+        <input class="cfg-input" id="cfg-minio-workers" type="number" min="1" max="64" placeholder="16" />
       </div>
 
       <div class="cfg-row">
