@@ -4,6 +4,7 @@ import { showLogPanel, setLogHook } from './log-panel';
 export function initToolbox(): void {
   document.getElementById('card-horde-agent')!.addEventListener('click', showHordeAgentPage);
   document.getElementById('card-unreal-toolbox')!.addEventListener('click', installUnrealToolbox);
+  document.getElementById('card-setup-env-vars')!.addEventListener('click', setupEnvVars);
 
   document.getElementById('ha-page-btn-install')!.addEventListener('click', haInstall);
   document.getElementById('ha-page-btn-start')!.addEventListener('click', haStart);
@@ -98,6 +99,19 @@ async function haStop(): Promise<void> {
   } else {
     toast(`停止失败: ${result.error}`);
     setStatus('error', '停止失败');
+  }
+}
+
+async function setupEnvVars(): Promise<void> {
+  setStatus('warning', '正在设置环境变量...');
+  showLogPanel();
+  const result = await window.studioHub.runScript('tools/setup_p4_env.ps1');
+  if (result.success) {
+    toast('环境变量设置完成');
+    setStatus('ok', '就绪');
+  } else {
+    toast(`设置失败: ${result.error || '请查看日志'}`);
+    setStatus('error', '设置失败');
   }
 }
 

@@ -24,14 +24,18 @@
       {
         "from": "tools",
         "to": "tools",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "assets/icon.ico"
@@ -49,9 +53,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "esbuild": "^0.24.0",
     "electron": "^33.4.0",
     "electron-builder": "^25.1.8",
-    "typescript": "^5.7.0"
+    "esbuild": "^0.24.0",
+    "typescript": "^5.9.3"
   }
 }
