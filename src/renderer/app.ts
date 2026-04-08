@@ -76,4 +76,36 @@ window.addEventListener('DOMContentLoaded', async () => {
   window.studioHub.onScriptLog(({ type, msg }) => appendLog(type, msg));
 
   await loadAppConfig();
+
+  document.getElementById('btn-check-update')!.addEventListener('click', async () => {
+    const status = await window.studioHub.updaterCheck();
+    if (status.error) {
+      alert('检查更新失败: ' + status.error);
+      return;
+    }
+    if (!status.available) {
+      alert('当前已是最新版本 v' + status.currentVersion);
+      return;
+    }
+    const doUpdate = confirm(`发现新版本 v${status.updateInfo?.version}！\n\n${status.updateInfo?.notes}\n\n是否立即更新？`);
+    if (doUpdate) {
+      const result = await window.studioHub.updaterDownloadAndInstall();
+      if (!result.success) {
+        alert('更新失败: ' + result.error);
+      }
+    }
+  });
+
+  const updateStatus = await window.studioHub.updaterCheck();
+  if (updateStatus.available) {
+    document.getElementById('update-indicator')!.style.display = '';
+    const btn = document.getElementById('btn-check-update')!;
+    btn.style.animation = 'pulse 2s infinite';
+    btn.title = `发现新版本 v${updateStatus.updateInfo?.version}！点击更新`;
+
+    const banner = document.getElementById('update-banner')!;
+    banner.style.display = 'flex';
+    document.getElementById('update-banner-text')!.textContent =
+      `🎉 发现新版本 v${updateStatus.updateInfo?.version}，点击右上角立即更新`;
+  }
 });

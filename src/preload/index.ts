@@ -35,6 +35,10 @@ const api: StudioHubAPI = {
     ipcRenderer.on('launcher-progress', (_e, progress) => callback(progress));
   },
 
+  // Updater
+  updaterCheck: () => ipcRenderer.invoke('updater:check'),
+  updaterDownloadAndInstall: () => ipcRenderer.invoke('updater:download-and-install'),
+
   // UGS
   ugsCheckInstalled: () => ipcRenderer.invoke('ugs:check-installed'),
   ugsLaunch: () => ipcRenderer.invoke('ugs:launch'),

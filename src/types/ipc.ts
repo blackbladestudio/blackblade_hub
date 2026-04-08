@@ -60,6 +60,10 @@ export interface StudioHubAPI {
   launcherStop(variant: GameVariant): Promise<{ success: boolean; error?: string }>;
   onLauncherProgress(callback: (progress: DownloadProgress) => void): void;
 
+  // Updater
+  updaterCheck(): Promise<{ available: boolean; currentVersion: string; updateInfo?: { version: string; notes: string; url: string; date: string }; error?: string }>;
+  updaterDownloadAndInstall(): Promise<{ success: boolean; error?: string }>;
+
   // UGS
   ugsCheckInstalled(): Promise<{ installed: boolean; path: string | null }>;
   ugsLaunch(): Promise<LaunchResult>;
