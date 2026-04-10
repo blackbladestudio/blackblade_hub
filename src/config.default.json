@@ -14,7 +14,7 @@
   },
   "launcher": {
     "installDir": "",
-    "prefix": "",
+    "prefix": "ProjectZion/Win64",
     "exeRelativePath": ""
   }
 }

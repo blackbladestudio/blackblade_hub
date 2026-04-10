@@ -1,7 +1,8 @@
 {
   "name": "blackblade-hub",
-  "version": "1.3.1",
-  "description": "BlackBlade Hub - 工作室统一工作台",
+  "version": "1.4.0",
+  "author": "BlackBlade",
+  "description": "BlackBlade Hub",
   "main": "dist/main/index.js",
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -13,6 +14,7 @@
   "build": {
     "appId": "com.blackblade.hub",
     "productName": "BlackBlade Hub",
+    "copyright": "Copyright 2026 BlackBlade",
     "directories": {
       "output": "dist-package"
     },
@@ -35,6 +37,7 @@
       }
     ],
     "win": {
+      "executableName": "BlackBladeHub",
       "target": [
         {
           "target": "nsis",
