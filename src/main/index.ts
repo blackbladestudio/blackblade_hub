@@ -1,7 +1,8 @@
 import { app, BrowserWindow, Menu, Tray, nativeImage } from 'electron';
 import path from 'path';
-import { bootstrapConfig } from './config';
+import { bootstrapConfig, loadConfig } from './config';
 import { registerAllHandlers } from './ipc';
+import * as gameManager from './services/game-manager';
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -104,6 +105,27 @@ if (!gotTheLock) {
     registerAllHandlers(getMainWindow);
     createWindow();
     createTray();
+
+    const config = loadConfig();
+    if (config.minio?.endpoint && config.launcher?.prefix) {
+      gameManager.checkForUpdates(config.minio, config.launcher).then((results) => {
+        const updates = results.filter((r) => r.needsSync);
+        if (updates.length > 0) {
+          for (const r of updates) {
+            console.log(`[hub] ${r.variant} 有新版本: ${r.remoteVersion} (当前: ${r.localVersion})`);
+          }
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('launcher-update-available', updates.map((r) => ({
+              variant: r.variant,
+              localVersion: r.localVersion,
+              remoteVersion: r.remoteVersion,
+            })));
+          }
+        }
+      }).catch((err) => {
+        console.warn('[hub] 启动时版本检测失败:', err.message);
+      });
+    }
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

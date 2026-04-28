@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'child_process';
+import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { resolvePath } from '../utils';
@@ -69,6 +69,12 @@ export async function mcMirror(
   localDir: string,
   variant: GameVariant,
   onProgress: (p: DownloadProgress) => void,
+  options: {
+    totalBytes?: number;
+    totalFiles?: number;
+    trackedFiles?: Array<{ relativePath: string; size: number; initialSize?: number }>;
+    onLog?: (type: 'stdout' | 'stderr' | 'info' | 'error', msg: string) => void;
+  } = {},
 ): Promise<void> {
   const mc = findMcBinary();
   const maxWorkers = minioConfig.maxWorkers ?? 16;
@@ -78,41 +84,341 @@ export async function mcMirror(
   const normalizedPrefix = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix;
   const remotePath = `${MC_ALIAS}/${bucket}/${normalizedPrefix}`;
 
-  if (fs.existsSync(localDir)) {
-    fs.rmSync(localDir, { recursive: true, force: true });
-  }
+  const baseSnapshot = snapshotLocalFiles(localDir);
   fs.mkdirSync(localDir, { recursive: true });
 
   return new Promise<void>((resolve, reject) => {
-    // --no-color avoids ANSI escape codes mixing into JSON output on Windows
-    const args = ['mirror', '--overwrite', '--json', '--no-color', '--max-workers', String(maxWorkers), '--retry', '--summary', remotePath, localDir];
-    let child: ChildProcess;
-    try {
-      child = spawn(mc, args, {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
+    const args = [
+      'mirror',
+      '--overwrite',
+      '--json',
+      '--no-color',
+      '--max-workers',
+      String(maxWorkers),
+      '--retry',
+      '--summary',
+      remotePath,
+      localDir,
+    ];
+    const log = (type: 'stdout' | 'stderr' | 'info' | 'error', msg: string): void => {
+      options.onLog?.(type, msg);
+      if (type === 'stderr' || type === 'error') console.error(msg);
+      else console.log(msg);
+    };
+
+    log('info', `[mc-mirror] running: "${mc}" ${args.map((arg) => JSON.stringify(arg)).join(' ')}`);
+
+    const child = spawn(mc, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdoutBuffer = '';
+    let stderrBuffer = '';
+    let stderrText = '';
+    let settled = false;
+    const plannedTotalBytes = options.totalBytes ?? 0;
+    const plannedTotalFiles = options.totalFiles ?? 0;
+    let transferredBytes = 0;
+    let transferredCount = 0;
+    let lastScannedBytes = 0;
+    let lastScannedFiles = 0;
+    let lastEmitTime = Date.now();
+    let lastEmitBytes = 0;
+    let currentSpeed = 0;
+    const errorMessages: string[] = [];
+
+    const scanLocalProgress = (): { bytes: number; files: number } => {
+      let bytes = 0;
+      let files = 0;
+
+      if (options.trackedFiles && options.trackedFiles.length > 0) {
+        for (const file of options.trackedFiles) {
+          const full = path.join(localDir, file.relativePath);
+          let currentSize = 0;
+          try {
+            currentSize = fs.statSync(full).size;
+          } catch {
+            continue;
+          }
+
+          if (currentSize === file.size) {
+            bytes += file.size;
+            files++;
+            continue;
+          }
+
+          if (file.initialSize !== undefined && currentSize === file.initialSize) {
+            continue;
+          }
+
+          if (currentSize < file.size) {
+            bytes += currentSize;
+          }
+        }
+        return { bytes, files };
+      }
+
+      const walk = (dir: string): void => {
+        let entries: fs.Dirent[];
+        try {
+          entries = fs.readdirSync(dir, { withFileTypes: true });
+        } catch {
+          return;
+        }
+
+        for (const entry of entries) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            walk(full);
+          } else if (entry.isFile()) {
+            const rel = path.relative(localDir, full).replace(/\\/g, '/').toLowerCase();
+            const initialSize = baseSnapshot.get(rel);
+            try {
+              const currentSize = fs.statSync(full).size;
+              if (initialSize === undefined) {
+                files++;
+                bytes += currentSize;
+              } else if (currentSize !== initialSize) {
+                files++;
+                bytes += Math.max(0, currentSize - Math.min(initialSize, currentSize));
+              }
+            } catch {
+              // 文件可能正在被 mc 写入，下一轮扫描会重新统计
+            }
+          }
+        }
+      };
+
+      walk(localDir);
+      return { bytes, files };
+    };
+
+    const emitDownloadingProgress = (message?: string, forceScan = false): void => {
+      if (forceScan) {
+        const scanned = scanLocalProgress();
+        lastScannedBytes = scanned.bytes;
+        lastScannedFiles = scanned.files;
+      }
+
+      const actualBytes = Math.max(transferredBytes, lastScannedBytes);
+      const actualFiles = Math.max(transferredCount, lastScannedFiles);
+      const now = Date.now();
+      const elapsed = (now - lastEmitTime) / 1000;
+      if (elapsed > 0) {
+        currentSpeed = Math.max(0, (actualBytes - lastEmitBytes) / elapsed);
+        lastEmitBytes = actualBytes;
+        lastEmitTime = now;
+      }
+
+      const percent = plannedTotalBytes > 0
+        ? Math.min(99, Math.floor((actualBytes / plannedTotalBytes) * 100))
+        : actualBytes > 0
+          ? -1
+          : 0;
+
+      onProgress({
+        variant,
+        phase: 'downloading',
+        percent,
+        downloadedBytes: actualBytes > 0 ? actualBytes : undefined,
+        totalBytes: plannedTotalBytes > 0 ? plannedTotalBytes : undefined,
+        downloadedFiles: actualFiles > 0 ? actualFiles : undefined,
+        totalFiles: plannedTotalFiles > 0 ? plannedTotalFiles : undefined,
+        speed: currentSpeed > 0 ? currentSpeed : undefined,
+        message,
       });
-    } catch (spawnErr) {
-      // Synchronous spawn failure (e.g. binary not found on some platforms)
-      fs.rmSync(localDir, { recursive: true, force: true });
-      reject(new Error(`mc 启动失败: ${(spawnErr as Error).message}`));
+    };
+
+    const scanTimer = setInterval(() => {
+      emitDownloadingProgress(undefined, true);
+    }, 1000);
+
+    const handleJsonMessage = (msg: any, line: string): void => {
+      if (options.trackedFiles && options.trackedFiles.length > 0) {
+        if (msg.status === 'success' && msg.type === 'file') {
+          emitDownloadingProgress(undefined, true);
+        } else if (msg.status === 'error') {
+          const message = msg.error?.cause?.message || msg.error?.message || line;
+          errorMessages.push(message);
+          log('error', `[mc-mirror] error: ${message}`);
+          onProgress({ variant, phase: 'error', percent: 0, message });
+        }
+        return;
+      }
+
+      if (msg.status === 'progress') {
+        if (typeof msg.size === 'number') transferredBytes = Math.max(transferredBytes, msg.size);
+        if (typeof msg.transferred === 'number') transferredBytes = Math.max(transferredBytes, msg.transferred);
+        emitDownloadingProgress(`${transferredCount} 个文件，${formatBytes(transferredBytes)} 已下载`);
+        return;
+      }
+
+      if (msg.status === 'success' || msg.type === 'file') {
+        if (typeof msg.totalSize === 'number') transferredBytes = msg.totalSize;
+        else if (typeof msg.accumulativeSize === 'number') transferredBytes = msg.accumulativeSize;
+        else if (typeof msg.size === 'number') transferredBytes += msg.size;
+        if (msg.type !== 'summary') transferredCount += 1;
+        emitDownloadingProgress(`${transferredCount} 个文件，${formatBytes(transferredBytes)} 已下载`);
+        return;
+      }
+
+      if (msg.status === 'error') {
+        const message = msg.error?.cause?.message || msg.error?.message || line;
+        errorMessages.push(message);
+        log('error', `[mc-mirror] error: ${message}`);
+        onProgress({ variant, phase: 'error', percent: 0, message });
+      }
+    };
+
+    const handleLine = (stream: 'stdout' | 'stderr', rawLine: string): void => {
+      const line = rawLine.trim();
+      if (!line) return;
+
+      if (stream === 'stdout') {
+        log('stdout', `[mc-mirror][stdout] ${line}`);
+      } else {
+        stderrText += line + '\n';
+        log('stderr', `[mc-mirror][stderr] ${line}`);
+      }
+
+      if (!line.startsWith('{')) return;
+      try {
+        handleJsonMessage(JSON.parse(line), line);
+      } catch (err) {
+        log('stderr', `[mc-mirror] failed to parse json line: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    };
+
+    const handleChunk = (stream: 'stdout' | 'stderr', chunk: Buffer): void => {
+      const text = chunk.toString('utf-8');
+      if (stream === 'stdout') {
+        stdoutBuffer += text;
+        const lines = stdoutBuffer.split(/\r?\n/);
+        stdoutBuffer = lines.pop() ?? '';
+        for (const line of lines) handleLine('stdout', line);
+      } else {
+        stderrBuffer += text;
+        const lines = stderrBuffer.split(/\r?\n/);
+        stderrBuffer = lines.pop() ?? '';
+        for (const line of lines) handleLine('stderr', line);
+      }
+    };
+
+    child.stdout!.on('data', (chunk: Buffer) => handleChunk('stdout', chunk));
+    child.stderr!.on('data', (chunk: Buffer) => handleChunk('stderr', chunk));
+
+    child.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(scanTimer);
+      try { fs.rmSync(localDir, { recursive: true, force: true }); } catch { /* ignore */ }
+      reject(new Error(`mc mirror 启动失败: ${err.message}`));
+    });
+
+    child.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(scanTimer);
+
+      handleLine('stdout', stdoutBuffer);
+      handleLine('stderr', stderrBuffer);
+      emitDownloadingProgress(undefined, true);
+
+      log('info', `[mc-mirror] closed: code=${code}, files=${Math.max(transferredCount, lastScannedFiles)}, bytes=${Math.max(transferredBytes, lastScannedBytes)}`);
+
+      if (code !== 0 || errorMessages.length > 0) {
+        try { fs.rmSync(localDir, { recursive: true, force: true }); } catch { /* ignore */ }
+        reject(new Error(errorMessages[0] || stderrText.trim() || `mc mirror 退出码: ${code}`));
+        return;
+      }
+
+      onProgress({
+        variant,
+        phase: 'downloading',
+        percent: 100,
+        downloadedBytes: Math.max(transferredBytes, lastScannedBytes),
+        totalBytes: plannedTotalBytes > 0 ? plannedTotalBytes : undefined,
+        downloadedFiles: Math.max(transferredCount, lastScannedFiles),
+        totalFiles: plannedTotalFiles > 0 ? plannedTotalFiles : undefined,
+        message: `${Math.max(transferredCount, lastScannedFiles)} 个文件下载完成`,
+      });
+      resolve();
+    });
+  });
+}
+
+function snapshotLocalFiles(dir: string): Map<string, number> {
+  const snapshot = new Map<string, number>();
+  const walk = (current: string): void => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
       return;
     }
 
-    let stderr = '';
-    let transferredBytes = 0;
-    let transferredCount = 0;
-    let errorCount = 0;
-    const errorMessages: string[] = [];
-    let stdoutBuffer = '';
+    for (const entry of entries) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.isFile()) {
+        try {
+          snapshot.set(path.relative(dir, full).replace(/\\/g, '/').toLowerCase(), fs.statSync(full).size);
+        } catch {
+          // ignore
+        }
+      }
+    }
+  };
+  walk(dir);
+  return snapshot;
+}
 
-    console.log(`[mc-mirror] running: ${mc} mirror ... ${remotePath} -> ${localDir}`);
+export interface McListObject {
+  key: string;
+  size: number;
+  lastModified: string;
+}
+
+function normalizeRemotePrefix(prefix: string): string {
+  return prefix.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '') + '/';
+}
+
+export async function mcListObjects(
+  minioConfig: MinioConfig,
+  bucket: string,
+  prefix: string,
+  options: {
+    onLog?: (type: 'stdout' | 'stderr' | 'info' | 'error', msg: string) => void;
+    onProgress?: (count: number, bytes: number) => void;
+  } = {},
+): Promise<McListObject[]> {
+  const mc = findMcBinary();
+  await setupAlias(mc, minioConfig);
+
+  const normalizedPrefix = normalizeRemotePrefix(prefix);
+  const remotePath = `${MC_ALIAS}/${bucket}/${normalizedPrefix}`;
+
+  return new Promise<McListObject[]>((resolve, reject) => {
+    const args = ['ls', '--json', '--no-color', '--recursive', remotePath];
+    const child = spawn(mc, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+
+    let stderr = '';
+    const objects: McListObject[] = [];
+    let stdoutBuffer = '';
+    let totalBytes = 0;
+    let lastReportAt = Date.now();
+
+    const reportProgress = (force = false): void => {
+      const now = Date.now();
+      if (!force && now - lastReportAt < 1000) return;
+      lastReportAt = now;
+      options.onProgress?.(objects.length, totalBytes);
+      options.onLog?.('info', `[mc-ls] 已扫描 ${objects.length} 个文件，累计 ${formatBytes(totalBytes)}`);
+    };
+
+    options.onLog?.('info', `[mc-ls] running: "${mc}" ${args.map((arg) => JSON.stringify(arg)).join(' ')}`);
 
     child.stdout!.on('data', (chunk: Buffer) => {
-      // Buffer incomplete lines between chunks
       stdoutBuffer += chunk.toString('utf-8');
       const lines = stdoutBuffer.split('\n');
-      // Keep the last (potentially incomplete) line in the buffer
       stdoutBuffer = lines.pop() ?? '';
 
       for (const line of lines) {
@@ -120,73 +426,38 @@ export async function mcMirror(
         if (!trimmed) continue;
         try {
           const msg = JSON.parse(trimmed);
-          if (msg.status === 'success') {
-            if (typeof msg.totalSize === 'number') transferredBytes = msg.totalSize;
-            if (typeof msg.totalCount === 'number') transferredCount = msg.totalCount;
-
-            let percent = 0;
-            if (typeof msg.percent === 'number') {
-              percent = Math.floor(msg.percent);
-            } else if (typeof msg.total === 'number' && msg.total > 0 && typeof msg.size === 'number') {
-              percent = Math.min(99, Math.floor((msg.size / msg.total) * 100));
-            }
-
-            onProgress({
-              variant,
-              phase: 'downloading',
-              percent: 0,
-              downloadedBytes: transferredBytes,
-              message: `下载中 ${formatBytes(transferredBytes)}${transferredCount > 0 ? ' / ' + transferredCount + ' 文件' : ''}`,
+          if (msg.key && (!msg.type || msg.type === 'file')) {
+            const size = typeof msg.size === 'number' ? msg.size : 0;
+            objects.push({
+              key: String(msg.key).replace(/\\/g, '/').replace(/^\/+/, ''),
+              size,
+              lastModified: msg.lastModified || '',
             });
-          } else if (msg.status === 'error') {
-            errorCount++;
-            const cause = msg.error?.cause?.message || msg.error?.message || trimmed;
-            errorMessages.push(String(cause));
-            console.error('[mc-mirror] error:', cause);
+            totalBytes += size;
+            reportProgress();
           }
         } catch {
-          // non-JSON line (e.g. debug output), ignore
+          // non-JSON line, ignore
         }
       }
     });
 
     child.stderr!.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString('utf-8');
-      const line = chunk.toString('utf-8').trim();
-      if (line) console.log('[mc-mirror]', line);
+      const text = chunk.toString('utf-8');
+      stderr += text;
+      const trimmed = text.trim();
+      if (trimmed) options.onLog?.('stderr', `[mc-ls][stderr] ${trimmed}`);
     });
 
-    child.on('error', (err) => {
-      // Clean up the partially-created directory on failure
-      try { fs.rmSync(localDir, { recursive: true, force: true }); } catch { /* ignore */ }
-      reject(new Error(`mc 启动失败: ${err.message}. 请确保 mc.exe 已放入 tools/ 目录或已在 PATH 中。`));
-    });
+    child.on('error', (err) => reject(new Error(`mc ls 失败: ${err.message}`)));
 
     child.on('close', (code) => {
-      // mc mirror exits with code 0 even when errors occurred for individual files.
-      // Treat as failure when errors were reported and nothing was successfully downloaded.
-      const hasErrors = errorCount > 0;
-      const hasDownloads = transferredCount > 0;
-
-      if (code === 0 && (!hasErrors || hasDownloads)) {
-        if (hasErrors) {
-          console.warn(`[mc-mirror] completed with ${errorCount} error(s), ${transferredCount} file(s) downloaded`);
-        }
-        onProgress({
-          variant,
-          phase: 'downloading',
-          percent: 100,
-          downloadedBytes: transferredBytes,
-          message: `${transferredCount} 个文件下载完成`,
-        });
-        resolve();
+      reportProgress(true);
+      if (code === 0) {
+        options.onLog?.('info', `[mc-ls] 完成: ${objects.length} 个文件，${formatBytes(totalBytes)}`);
+        resolve(objects);
       } else {
-        // Clean up partial download on failure
-        try { fs.rmSync(localDir, { recursive: true, force: true }); } catch { /* ignore */ }
-        const errMsg = errorMessages[0]
-          || stderr.trim()
-          || `mc mirror 退出码: ${code}`;
-        reject(new Error(errMsg));
+        reject(new Error(`mc ls 退出码: ${code}${stderr ? ' - ' + stderr.trim() : ''}`));
       }
     });
   });

@@ -8,6 +8,7 @@ import type {
   InstalledBuild,
 } from '../../types/launcher';
 import { toast, setStatus } from '../utils';
+import { appendLog } from './log-panel';
 
 let currentVariant: GameVariant = 'Development';
 let manifest: LauncherManifest | null = null;
@@ -15,6 +16,7 @@ let state: LauncherState | null = null;
 let isInstalling = false;
 let getConfigRef: (() => AppConfig) | null = null;
 let runningVariants: Set<GameVariant> = new Set();
+let selectedBuildKeys: Partial<Record<GameVariant, string>> = {};
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 let mainPollInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -68,11 +70,17 @@ export function initLauncher(getConfig: () => AppConfig): void {
   document.getElementById('launcher-btn-install')!.addEventListener('click', handleInstall);
   document.getElementById('launcher-btn-launch')!.addEventListener('click', handleLaunch);
   document.getElementById('launcher-btn-update')!.addEventListener('click', handleInstall);
+  document.getElementById('launcher-btn-check-update')!.addEventListener('click', handleForceCheckUpdate);
   document.getElementById('launcher-btn-uninstall')!.addEventListener('click', handleUninstall);
   document.getElementById('launcher-btn-browse-dir')!.addEventListener('click', handleBrowseDir);
   document.getElementById('launcher-btn-open-dir')!.addEventListener('click', handleOpenDir);
+  document.getElementById('launcher-remote-build-select')!.addEventListener('change', (event) => {
+    selectedBuildKeys[currentVariant] = (event.target as HTMLSelectElement).value;
+    renderVariant(currentVariant);
+  });
 
   window.studioHub.onLauncherProgress(handleProgress);
+  window.studioHub.onLauncherUpdateAvailable(handleStartupUpdateAvailable);
 
   refreshGameCardStatus();
   mainPollInterval = setInterval(refreshGameCardStatus, 5000);
@@ -235,14 +243,52 @@ function getLatestBuild(variant: GameVariant): BuildInfo | null {
   if (!manifest) return null;
   const builds = manifest.builds.filter((b) => b.variant === variant);
   if (builds.length === 0) return null;
-  builds.sort((a, b) => {
-    const ta = new Date(a.timestamp).getTime();
-    const tb = new Date(b.timestamp).getTime();
-    if (tb !== ta) return tb - ta;
-    // Fall back to version string comparison when timestamps are equal
-    return b.version.localeCompare(a.version, undefined, { numeric: true, sensitivity: 'base' });
-  });
+  builds.sort(compareBuilds);
   return builds[0];
+}
+
+function compareBuilds(a: BuildInfo, b: BuildInfo): number {
+    const versionCompare = b.version.localeCompare(a.version, undefined, { numeric: true, sensitivity: 'base' });
+    if (versionCompare !== 0) return versionCompare;
+    const buildCompare = b.buildNumber.localeCompare(a.buildNumber, undefined, { numeric: true, sensitivity: 'base' });
+    if (buildCompare !== 0) return buildCompare;
+    const aLabel = a.objectKey.replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop() ?? '';
+    const bLabel = b.objectKey.replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop() ?? '';
+    const aHasVPrefix = /^v/i.test(aLabel);
+    const bHasVPrefix = /^v/i.test(bLabel);
+    if (aHasVPrefix !== bHasVPrefix) return bHasVPrefix ? 1 : -1;
+    return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+}
+
+function getBuildsForVariant(variant: GameVariant): BuildInfo[] {
+  if (!manifest) return [];
+  return manifest.builds.filter((b) => b.variant === variant).sort(compareBuilds);
+}
+
+function getSelectedBuild(variant: GameVariant): BuildInfo | null {
+  const builds = getBuildsForVariant(variant);
+  if (builds.length === 0) return null;
+  const selectedKey = selectedBuildKeys[variant];
+  const selected = selectedKey ? builds.find((b) => b.objectKey === selectedKey) : null;
+  if (selected) return selected;
+  selectedBuildKeys[variant] = builds[0].objectKey;
+  return builds[0];
+}
+
+function renderBuildSelector(variant: GameVariant): void {
+  const select = document.getElementById('launcher-remote-build-select') as HTMLSelectElement;
+  const builds = getBuildsForVariant(variant);
+  select.innerHTML = '';
+  for (const build of builds) {
+    const option = document.createElement('option');
+    option.value = build.objectKey;
+    const label = build.objectKey.replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop() ?? build.version;
+    option.textContent = label;
+    select.appendChild(option);
+  }
+
+  const selected = getSelectedBuild(variant);
+  select.value = selected?.objectKey ?? '';
 }
 
 function getInstalledBuild(variant: GameVariant): InstalledBuild | undefined {
@@ -262,12 +308,12 @@ function showPanel(panel: 'not-configured' | 'no-builds' | 'details'): void {
 }
 
 function hideAllActions(): void {
-  ['launcher-btn-install', 'launcher-btn-launch', 'launcher-btn-update', 'launcher-btn-uninstall', 'launcher-btn-open-dir']
+  ['launcher-btn-install', 'launcher-btn-launch', 'launcher-btn-update', 'launcher-btn-check-update', 'launcher-btn-uninstall', 'launcher-btn-open-dir']
     .forEach((id) => ((document.getElementById(id) as HTMLElement).style.display = 'none'));
 }
 
 function renderVariant(variant: GameVariant): void {
-  const build = getLatestBuild(variant);
+  const build = getSelectedBuild(variant);
   const installed = getInstalledBuild(variant);
 
   if (!build) {
@@ -276,6 +322,7 @@ function renderVariant(variant: GameVariant): void {
   }
 
   showPanel('details');
+  renderBuildSelector(variant);
 
   document.getElementById('launcher-remote-version')!.textContent = build.version;
   document.getElementById('launcher-remote-build')!.textContent = build.buildNumber;
@@ -310,11 +357,13 @@ function renderVariant(variant: GameVariant): void {
   const btnInstall = document.getElementById('launcher-btn-install') as HTMLElement;
   const btnLaunch = document.getElementById('launcher-btn-launch') as HTMLElement;
   const btnUpdate = document.getElementById('launcher-btn-update') as HTMLElement;
+  const btnCheckUpdate = document.getElementById('launcher-btn-check-update') as HTMLElement;
   const btnUninstall = document.getElementById('launcher-btn-uninstall') as HTMLElement;
 
   if (!installed) {
     btnInstall.style.display = '';
     btnUpdate.style.display = 'none';
+    btnCheckUpdate.style.display = 'none';
     btnLaunch.style.display = 'none';
     btnUninstall.style.display = 'none';
     document.getElementById('launcher-btn-open-dir')!.style.display = 'none';
@@ -322,10 +371,46 @@ function renderVariant(variant: GameVariant): void {
     btnInstall.style.display = 'none';
     btnLaunch.style.display = '';
     btnUninstall.style.display = '';
+    btnCheckUpdate.style.display = '';
     document.getElementById('launcher-btn-open-dir')!.style.display = '';
-    const hasUpdate =
-      installed.version !== build.version || installed.buildNumber !== build.buildNumber;
-    btnUpdate.style.display = hasUpdate ? '' : 'none';
+    checkVersionUpdate(variant, installed, build);
+  }
+}
+
+async function checkVersionUpdate(
+  variant: GameVariant,
+  installed: InstalledBuild,
+  build: BuildInfo,
+): Promise<void> {
+  const btnUpdate = document.getElementById('launcher-btn-update') as HTMLElement;
+  const btnCheckUpdate = document.getElementById('launcher-btn-check-update') as HTMLElement;
+
+  const dirHasUpdate = installed.version !== build.version || installed.buildNumber !== build.buildNumber;
+  if (dirHasUpdate) {
+    btnUpdate.style.display = '';
+    btnCheckUpdate.style.display = 'none';
+    return;
+  }
+
+  try {
+    const result = await window.studioHub.launcherCheckUpdates(variant, build.objectKey);
+    if (result.hasUpdate) {
+      btnUpdate.style.display = '';
+      btnCheckUpdate.style.display = 'none';
+      const localInfoEl = document.getElementById('launcher-local-info')!;
+      const versionEl = document.getElementById('launcher-local-version')!;
+      if (result.localVersion && result.remoteVersion) {
+        versionEl.textContent = `${installed.version} ${installed.buildNumber} → ${result.remoteVersion}`;
+        localInfoEl.classList.add('has-update');
+      }
+    } else {
+      btnUpdate.style.display = 'none';
+      btnCheckUpdate.style.display = '';
+    }
+  } catch {
+    const dirFallback = installed.version !== build.version || installed.buildNumber !== build.buildNumber;
+    btnUpdate.style.display = dirFallback ? '' : 'none';
+    btnCheckUpdate.style.display = dirFallback ? 'none' : '';
   }
 }
 
@@ -342,10 +427,12 @@ async function handleInstall(): Promise<void> {
 
   isInstalling = true;
   showProgressBar();
+  appendLog('info', `[launcher] 开始下载 ${currentVariant} 版本`);
   hideAllActions();
   setStatus('warning', '正在安装游戏...');
 
-  const result = await window.studioHub.launcherInstall(currentVariant);
+  const selectedBuild = getSelectedBuild(currentVariant);
+  const result = await window.studioHub.launcherInstall(currentVariant, selectedBuild?.objectKey);
 
   isInstalling = false;
 
@@ -361,6 +448,54 @@ async function handleInstall(): Promise<void> {
   await refreshLauncherData();
   await refreshGameCardStatus();
   await pollRunningStatus();
+}
+
+async function handleForceCheckUpdate(): Promise<void> {
+  const btnCheck = document.getElementById('launcher-btn-check-update') as HTMLElement;
+  btnCheck.textContent = '⏳';
+  btnCheck.setAttribute('disabled', 'true');
+
+  try {
+    const selectedBuild = getSelectedBuild(currentVariant);
+    const result = await window.studioHub.launcherForceCheckUpdates(currentVariant, selectedBuild?.objectKey);
+    if (result.error || !result.data) {
+      toast(`检测失败: ${result.error || '未知错误'}`);
+      return;
+    }
+
+    const current = result.data.find((r) => r.variant === currentVariant);
+    if (!current) {
+      toast('未找到当前变体的构建信息');
+      return;
+    }
+
+    appendLog(
+      'info',
+      `[launcher] 检查更新结果 ${current.variant}: 远端 ${current.remoteFileCount}，本地 ${current.localFileCount}，缺失 ${current.missingFiles}，大小不一致 ${current.sizeMismatchFiles}`,
+    );
+
+    if (current.needsSync) {
+      const btnUpdate = document.getElementById('launcher-btn-update') as HTMLElement;
+      btnUpdate.style.display = '';
+      const reasons: string[] = [];
+      if (current.missingFiles > 0) reasons.push(`缺少 ${current.missingFiles} 个文件`);
+      if (current.sizeMismatchFiles > 0) reasons.push(`${current.sizeMismatchFiles} 个文件大小不一致`);
+      if (current.remoteVersion && current.localVersion !== current.remoteVersion) {
+        reasons.push(`版本 ${current.localVersion ?? '无'} → ${current.remoteVersion}`);
+      }
+      const diffCount = current.missingFiles + current.sizeMismatchFiles;
+      toast(`发现更新: 共 ${diffCount} 个差异${reasons.length > 0 ? '，' + reasons.join('，') : ''}`);
+    } else {
+      const btnUpdate = document.getElementById('launcher-btn-update') as HTMLElement;
+      btnUpdate.style.display = 'none';
+      toast('所有文件已是最新，无需更新');
+    }
+  } catch (err) {
+    toast(`检测更新失败: ${err instanceof Error ? err.message : String(err)}`);
+  } finally {
+    btnCheck.textContent = '🔄';
+    btnCheck.removeAttribute('disabled');
+  }
 }
 
 async function handleLaunch(): Promise<void> {
@@ -425,6 +560,7 @@ function showProgressBar(): void {
   document.getElementById('launcher-progress')!.style.display = '';
   (document.getElementById('launcher-progress-fill') as HTMLElement).style.width = '0%';
   (document.getElementById('launcher-progress-fill') as HTMLElement).style.background = '';
+  (document.getElementById('launcher-progress-percent') as HTMLElement).textContent = '0%';
   document.getElementById('launcher-progress-label')!.textContent = '准备中...';
   document.getElementById('launcher-progress-detail')!.textContent = '';
 }
@@ -437,22 +573,43 @@ function hideProgressBar(): void {
 
 function handleProgress(progress: DownloadProgress): void {
   const fill = document.getElementById('launcher-progress-fill') as HTMLElement;
+  const percentEl = document.getElementById('launcher-progress-percent')!;
   const label = document.getElementById('launcher-progress-label')!;
   const detail = document.getElementById('launcher-progress-detail')!;
 
-  fill.style.width = progress.percent + '%';
+  if (progress.percent >= 0) {
+    fill.style.width = progress.percent + '%';
+    fill.classList.remove('indeterminate');
+    percentEl.textContent = progress.percent + '%';
+  } else {
+    fill.classList.add('indeterminate');
+    percentEl.textContent = '同步中';
+  }
 
   switch (progress.phase) {
     case 'downloading':
-      label.textContent = `下载中... ${progress.percent}%`;
+      if (progress.percent >= 0) {
+        label.textContent = progress.percent >= 100 ? '同步完成' : '正在同步游戏文件';
+      } else {
+        label.textContent = '正在同步游戏文件';
+      }
       if (progress.downloadedBytes != null) {
         const downloadedStr = formatBytes(progress.downloadedBytes);
+        const fileText = progress.totalFiles
+          ? ` · ${progress.downloadedFiles ?? 0} / ${progress.totalFiles} 文件`
+          : progress.downloadedFiles
+            ? ` · ${progress.downloadedFiles} 文件`
+            : '';
         if (progress.totalBytes) {
-          const speed = progress.speed ? formatBytes(Math.round(progress.speed)) + '/s' : '';
-          detail.textContent = `${downloadedStr} / ${formatBytes(progress.totalBytes)}  ${speed}`;
+          const speed = progress.speed ? formatBytes(Math.round(progress.speed)) + '/s' : '计算中';
+          detail.textContent = `${downloadedStr} / ${formatBytes(progress.totalBytes)} · ${speed}${fileText}`;
         } else {
-          detail.textContent = downloadedStr + ' 已下载';
+          detail.textContent = downloadedStr + ' 已下载' + fileText;
         }
+      } else if (progress.totalFiles) {
+        detail.textContent = `${progress.downloadedFiles ?? 0} / ${progress.totalFiles} 文件`;
+      } else if (progress.downloadedFiles) {
+        detail.textContent = `${progress.downloadedFiles} 个文件`;
       } else {
         detail.textContent = progress.message || '下载中';
       }
@@ -464,17 +621,36 @@ function handleProgress(progress: DownloadProgress): void {
     case 'done':
       label.textContent = '安装完成';
       fill.style.background = 'var(--green)';
+      percentEl.textContent = '100%';
       detail.textContent = '';
       break;
     case 'error':
       label.textContent = '安装失败';
       fill.style.background = 'var(--danger)';
+      percentEl.textContent = '失败';
       detail.textContent = progress.message || '';
       break;
   }
 }
 
 // --- Helpers ---
+
+function handleStartupUpdateAvailable(
+  updates: Array<{ variant: GameVariant; localVersion: string | null; remoteVersion: string | null }>,
+): void {
+  const banner = document.getElementById('update-banner')!;
+  const bannerText = document.getElementById('update-banner-text')!;
+  const labels = updates.map(
+    (u) => `${u.variant}: ${u.localVersion ?? '未安装'} → ${u.remoteVersion}`,
+  );
+  bannerText.textContent = `游戏有更新可用 — ${labels.join('  |  ')}`;
+  banner.style.display = 'flex';
+  banner.onclick = () => {
+    banner.style.display = 'none';
+    showLauncherPage();
+  };
+  refreshGameCardStatus();
+}
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return bytes + ' B';

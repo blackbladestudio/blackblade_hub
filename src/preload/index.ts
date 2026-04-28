@@ -23,7 +23,7 @@ const api: StudioHubAPI = {
   // Launcher
   launcherGetManifest: () => ipcRenderer.invoke('launcher:get-manifest'),
   launcherGetState: () => ipcRenderer.invoke('launcher:get-state'),
-  launcherInstall: (variant) => ipcRenderer.invoke('launcher:install', variant),
+  launcherInstall: (variant, objectKey) => ipcRenderer.invoke('launcher:install', variant, objectKey),
   launcherLaunch: (variant) => ipcRenderer.invoke('launcher:launch', variant),
   launcherUninstall: (variant) => ipcRenderer.invoke('launcher:uninstall', variant),
   launcherTestConnection: () => ipcRenderer.invoke('launcher:test-connection'),
@@ -31,9 +31,16 @@ const api: StudioHubAPI = {
   launcherOpenInstallDir: (variant) => ipcRenderer.invoke('launcher:open-install-dir', variant),
   launcherCheckRunning: (variant) => ipcRenderer.invoke('launcher:check-running', variant),
   launcherStop: (variant) => ipcRenderer.invoke('launcher:stop', variant),
+  launcherCheckUpdates: (variant, objectKey) => ipcRenderer.invoke('launcher:check-updates', variant, objectKey),
+  launcherSyncVariant: (variant, objectKey) => ipcRenderer.invoke('launcher:sync-variant', variant, objectKey),
   onLauncherProgress(callback) {
     ipcRenderer.on('launcher-progress', (_e, progress) => callback(progress));
   },
+  onLauncherUpdateAvailable(callback) {
+    ipcRenderer.on('launcher-update-available', (_e, updates) => callback(updates));
+  },
+  launcherForceCheckUpdates: (variant, objectKey) =>
+    ipcRenderer.invoke('launcher:force-check-updates', variant, objectKey),
 
   // Updater
   updaterCheck: () => ipcRenderer.invoke('updater:check'),

@@ -38,7 +38,7 @@ export function registerLauncherHandlers(getMainWindow: () => BrowserWindow | nu
     return gameManager.loadState();
   });
 
-  ipcMain.handle('launcher:install', async (_event, variant: GameVariant) => {
+  ipcMain.handle('launcher:install', async (_event, variant: GameVariant, objectKey?: string) => {
     try {
       const config = loadConfig();
       if (!config.minio?.endpoint) return { success: false, error: 'MinIO 未配置' };
@@ -51,9 +51,7 @@ export function registerLauncherHandlers(getMainWindow: () => BrowserWindow | nu
         config.launcher.exeRelativePath || '',
       );
 
-      const build = manifest.builds
-        .filter((b) => b.variant === variant)
-        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+      const build = gameManager.selectBuild(manifest.builds, variant, objectKey);
 
       if (!build) return { success: false, error: `无可用的 ${variant} 构建` };
 
@@ -114,6 +112,84 @@ export function registerLauncherHandlers(getMainWindow: () => BrowserWindow | nu
       return { success: true };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('launcher:check-updates', async (_event, variant: GameVariant, objectKey?: string) => {
+    try {
+      const state = gameManager.loadState();
+      const installed = state.installed[variant];
+      if (!installed) return { hasUpdate: false, error: '游戏未安装' };
+
+      const config = loadConfig();
+      if (!config.minio?.endpoint) return { hasUpdate: false, error: 'MinIO 未配置' };
+      if (!config.launcher?.prefix) return { hasUpdate: false, error: '构建路径前缀未配置' };
+
+      const results = await gameManager.checkForUpdates(
+        config.minio,
+        config.launcher,
+        { variant, objectKey },
+      );
+      const result = results.find((r) => r.variant === variant);
+
+      if (!result) return { hasUpdate: false, error: '未找到该变体' };
+
+      if (result.needsSync) {
+        return {
+          hasUpdate: true,
+          latestBuild: result.latestBuild,
+          localVersion: result.localVersion,
+          remoteVersion: result.remoteVersion,
+        };
+      }
+
+      return { hasUpdate: false };
+    } catch (err) {
+      return { hasUpdate: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('launcher:sync-variant', async (_event, variant: GameVariant, objectKey?: string) => {
+    try {
+      const config = loadConfig();
+      if (!config.minio?.endpoint) return { success: false, error: 'MinIO 未配置' };
+      if (!config.launcher?.prefix) return { success: false, error: '构建路径前缀未配置' };
+
+      const results = await gameManager.checkForUpdates(
+        config.minio,
+        config.launcher,
+        { variant, objectKey },
+      );
+      const result = results.find((r) => r.variant === variant);
+
+      if (!result || !result.latestBuild) {
+        return { success: false, error: '未找到可用的最新构建' };
+      }
+
+      if (!result.needsSync) {
+        return { success: false, error: '已是最新版本，无需同步' };
+      }
+
+      await gameManager.syncBuild(result.latestBuild, config.minio, config.launcher, getMainWindow());
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('launcher:force-check-updates', async (_event, variant?: GameVariant, objectKey?: string) => {
+    try {
+      const config = loadConfig();
+      if (!config.minio?.endpoint) return { data: null, error: 'MinIO 未配置' };
+      if (!config.launcher?.prefix) return { data: null, error: '构建路径前缀未配置' };
+      const results = await gameManager.forceCheckUpdates(
+        config.minio,
+        config.launcher,
+        variant ? { variant, objectKey } : undefined,
+      );
+      return { data: results };
+    } catch (err) {
+      return { data: null, error: err instanceof Error ? err.message : String(err) };
     }
   });
 }

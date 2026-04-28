@@ -1,5 +1,5 @@
 import type { AppConfig } from './config';
-import type { LauncherManifest, LauncherState, DownloadProgress, GameVariant } from './launcher';
+import type { LauncherManifest, LauncherState, DownloadProgress, GameVariant, BuildInfo } from './launcher';
 
 export interface ScriptResult {
   success: boolean;
@@ -50,7 +50,7 @@ export interface StudioHubAPI {
   // Launcher
   launcherGetManifest(): Promise<{ data: LauncherManifest | null; error?: string }>;
   launcherGetState(): Promise<LauncherState>;
-  launcherInstall(variant: GameVariant): Promise<LaunchResult>;
+  launcherInstall(variant: GameVariant, objectKey?: string): Promise<LaunchResult>;
   launcherLaunch(variant: GameVariant): Promise<LaunchResult>;
   launcherUninstall(variant: GameVariant): Promise<LaunchResult>;
   launcherTestConnection(): Promise<LaunchResult>;
@@ -58,7 +58,21 @@ export interface StudioHubAPI {
   launcherOpenInstallDir(variant: GameVariant): Promise<{ success: boolean; error?: string }>;
   launcherCheckRunning(variant: GameVariant): Promise<boolean>;
   launcherStop(variant: GameVariant): Promise<{ success: boolean; error?: string }>;
+  launcherCheckUpdates(variant: GameVariant, objectKey?: string): Promise<{ hasUpdate: boolean; latestBuild?: BuildInfo; localVersion?: string; remoteVersion?: string; error?: string }>;
+  launcherSyncVariant(variant: GameVariant, objectKey?: string): Promise<{ success: boolean; error?: string }>;
   onLauncherProgress(callback: (progress: DownloadProgress) => void): void;
+  onLauncherUpdateAvailable(callback: (updates: Array<{ variant: GameVariant; localVersion: string | null; remoteVersion: string | null }>) => void): void;
+  launcherForceCheckUpdates(variant?: GameVariant, objectKey?: string): Promise<{ data: Array<{
+    variant: GameVariant;
+    installed: boolean;
+    remoteFileCount: number;
+    localFileCount: number;
+    missingFiles: number;
+    sizeMismatchFiles: number;
+    remoteVersion: string | null;
+    localVersion: string | null;
+    needsSync: boolean;
+  }> | null; error?: string }>;
 
   // Updater
   updaterCheck(): Promise<{ available: boolean; currentVersion: string; updateInfo?: { version: string; notes: string; url: string; date: string }; error?: string }>;

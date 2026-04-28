@@ -227,6 +227,10 @@
         <div class="launcher-info-grid">
           <div class="launcher-info-section">
             <h3>远程版本</h3>
+            <div class="launcher-detail-row launcher-build-select-row">
+              <span class="launcher-detail-label">选择版本</span>
+              <select class="launcher-build-select" id="launcher-remote-build-select"></select>
+            </div>
             <div class="launcher-detail-row">
               <span class="launcher-detail-label">版本</span>
               <span id="launcher-remote-version">-</span>
@@ -272,7 +276,13 @@
 
     <!-- Progress -->
     <div class="launcher-progress" id="launcher-progress" style="display:none">
-      <div class="launcher-progress-label" id="launcher-progress-label">准备中...</div>
+      <div class="launcher-progress-top">
+        <div>
+          <div class="launcher-progress-kicker">同步任务</div>
+          <div class="launcher-progress-label" id="launcher-progress-label">准备中...</div>
+        </div>
+        <div class="launcher-progress-percent" id="launcher-progress-percent">0%</div>
+      </div>
       <div class="launcher-progress-bar">
         <div class="launcher-progress-fill" id="launcher-progress-fill"></div>
       </div>
@@ -282,8 +292,9 @@
     <!-- Actions -->
     <div class="launcher-actions">
       <button class="launcher-btn launcher-btn-install" id="launcher-btn-install">安装游戏</button>
+      <button class="launcher-btn launcher-btn-check-update" id="launcher-btn-check-update" style="display:none" title="检测更新">🔄</button>
+      <button class="launcher-btn launcher-btn-update" id="launcher-btn-update" style="display:none">📥 更新</button>
       <button class="launcher-btn launcher-btn-launch" id="launcher-btn-launch" style="display:none">▶ 启动游戏</button>
-      <button class="launcher-btn launcher-btn-update" id="launcher-btn-update" style="display:none">🔄 更新</button>
       <button class="launcher-btn launcher-btn-uninstall" id="launcher-btn-uninstall" style="display:none">卸载</button>
       <button class="launcher-btn launcher-btn-open-dir" id="launcher-btn-open-dir" style="display:none" title="打开目录">📁</button>
     </div>

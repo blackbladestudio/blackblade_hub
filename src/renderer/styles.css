@@ -1176,6 +1176,26 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
   font-family: monospace;
   font-size: 13px;
 }
+.launcher-build-select-row {
+  align-items: stretch;
+  gap: 12px;
+}
+.launcher-build-select {
+  min-width: 220px;
+  max-width: 360px;
+  background: rgba(8,11,16,0.62);
+  border: 1px solid var(--border-glow);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  padding: 8px 10px;
+  outline: none;
+}
+.launcher-build-select:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold-dim);
+}
 .launcher-notes {
   margin-top: 10px;
   padding: 8px 12px;
@@ -1189,35 +1209,93 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
 /* Progress */
 .launcher-progress {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px 20px;
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(79,163,227,0.14), transparent 38%),
+    linear-gradient(135deg, rgba(200,164,90,0.12), rgba(14,20,32,0.96));
+  border: 1px solid var(--border-glow);
+  border-radius: 14px;
+  padding: 18px 20px;
+  box-shadow: 0 18px 48px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+.launcher-progress::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+  background-size: 28px 28px;
+  opacity: 0.45;
+}
+.launcher-progress-top {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.launcher-progress-kicker {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--gold);
+  text-transform: uppercase;
+  margin-bottom: 5px;
 }
 .launcher-progress-label {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 700;
   color: var(--text);
-  margin-bottom: 10px;
+}
+.launcher-progress-percent {
+  min-width: 76px;
+  text-align: right;
+  font-size: 24px;
+  line-height: 1;
+  font-weight: 700;
+  color: #f0d080;
+  text-shadow: 0 0 18px var(--gold-glow);
 }
 .launcher-progress-bar {
-  height: 6px;
-  background: var(--border);
-  border-radius: 3px;
+  position: relative;
+  height: 10px;
+  background: rgba(8,11,16,0.72);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 999px;
   overflow: hidden;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 .launcher-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--gold), #f0d080);
-  border-radius: 3px;
+  background: linear-gradient(90deg, var(--blue), var(--gold), #f0d080);
+  border-radius: 999px;
   width: 0%;
   transition: width 0.3s ease;
+  box-shadow: 0 0 18px var(--gold-glow);
+}
+.launcher-progress-fill.indeterminate {
+  width: 30% !important;
+  background: linear-gradient(90deg, var(--blue), var(--gold), #f0d080);
+  animation: indeterminate-slide 1.5s ease-in-out infinite;
+}
+@keyframes indeterminate-slide {
+  0%   { margin-left: -30%; }
+  100% { margin-left: 100%; }
 }
 .launcher-progress-detail {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  padding: 6px 10px;
+  background: rgba(8,11,16,0.42);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 999px;
   font-size: 12px;
-  color: var(--muted);
-  font-family: monospace;
+  color: #9fbed8;
+  font-family: 'Consolas', 'Courier New', monospace;
   letter-spacing: 0.3px;
 }
 
@@ -1257,9 +1335,24 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
   color: #fff;
 }
 .launcher-btn-update {
-  background: var(--blue);
+  background: var(--primary);
   color: #fff;
-  padding: 12px 20px;
+}
+.launcher-btn-check-update {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 12px 16px;
+  font-size: 16px;
+  min-width: 44px;
+}
+.launcher-btn-check-update:hover:not([disabled]) {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.launcher-btn-check-update[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .launcher-btn-uninstall {
   background: transparent;
