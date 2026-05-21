@@ -2,6 +2,7 @@ import type { AppConfig } from '../types/config';
 import type { StudioHubAPI } from '../types/ipc';
 import { initLaunch, renderToolsColumn } from './modules/launch';
 import { initPipeline, refreshUgsStatus } from './modules/pipeline';
+import { initStudioPortal, refreshStudioPortalCards } from './modules/studio-portal';
 import { initToolbox, refreshHordeAgentStatus } from './modules/toolbox';
 import { initConfigModal } from './modules/config-modal';
 import { initLogPanel, appendLog } from './modules/log-panel';
@@ -18,6 +19,9 @@ let config: AppConfig = {
   tools: [],
   jenkins: '',
   horde: '',
+  studioHome: '',
+  studioChat: '',
+  studioHue: '',
   envScript: '',
   minio: { endpoint: 'http://10.248.15.20:9000', accessKey: '', secretKey: '', bucket: 'builds-client' },
   launcher: { installDir: '', prefix: '', exeRelativePath: '' },
@@ -53,6 +57,8 @@ function renderUI(): void {
     if (dot) dot.className = val?.trim() ? 'pipeline-status-dot ready' : 'pipeline-status-dot';
   }
 
+  refreshStudioPortalCards(config);
+
   refreshHordeAgentStatus();
   refreshUgsStatus();
 }
@@ -63,6 +69,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   }, 2200);
 
   initLaunch(getConfig, setConfigAndRender);
+  initStudioPortal(getConfig);
   initPipeline(getConfig);
   initToolbox();
   initConfigModal(getConfig, setConfigAndRender);

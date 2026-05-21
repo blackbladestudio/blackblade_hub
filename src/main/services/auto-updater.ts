@@ -4,7 +4,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const UPDATE_URL = 'http://212.64.1.17:8081/hub_dist/version.json';
+const UPDATE_URL = 'http://10.248.15.20/hub_dist/version.json';
 
 export interface UpdateInfo {
   version: string;
