@@ -505,16 +505,22 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 }
 
 /* ─── PIPELINE ZONE ─── */
+#studio-portal-zone {
+  padding: 0 28px 16px;
+  opacity: 0;
+  animation: slideUp 0.5s ease 2.12s forwards;
+}
+
 #pipeline-zone {
   padding: 0 28px 20px;
   opacity: 0;
-  animation: slideUp 0.5s ease 2.2s forwards;
+  animation: slideUp 0.5s ease 2.22s forwards;
 }
 
 #toolbox-zone {
   padding: 0 28px 20px;
   opacity: 0;
-  animation: slideUp 0.5s ease 2.3s forwards;
+  animation: slideUp 0.5s ease 2.32s forwards;
 }
 
 .pipeline-grid {
@@ -593,6 +599,9 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 .pipeline-card-icon.horde   { background: var(--blue-dim); border: 1px solid rgba(79,163,227,0.25); }
 .pipeline-card-icon.ugs     { background: var(--green-dim); border: 1px solid rgba(78,203,138,0.25); }
 .pipeline-card-icon.env     { background: rgba(200,164,90,0.1); border: 1px solid rgba(200,164,90,0.2); }
+.pipeline-card-icon.studio-home { background: rgba(168,130,255,0.12); border: 1px solid rgba(168,130,255,0.28); }
+.pipeline-card-icon.studio-chat { background: rgba(100,200,255,0.12); border: 1px solid rgba(100,200,255,0.28); }
+.pipeline-card-icon.studio-hue { background: rgba(255,140,90,0.12); border: 1px solid rgba(255,140,90,0.28); }
 .pipeline-card-name {
   font-size: 15px;
   font-weight: 700;
@@ -1259,6 +1268,25 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
   color: #f0d080;
   text-shadow: 0 0 18px var(--gold-glow);
 }
+.launcher-btn-abort {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  background: rgba(255,60,60,0.15);
+  color: #ff6b6b;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s;
+}
+.launcher-btn-abort:hover {
+  background: rgba(255,60,60,0.35);
+  border-color: rgba(255,60,60,0.5);
+}
 .launcher-progress-bar {
   position: relative;
   height: 10px;
@@ -1303,6 +1331,7 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 .launcher-actions {
   display: flex;
   gap: 10px;
+  align-items: center;
 }
 .launcher-btn {
   padding: 12px 24px;
@@ -1335,47 +1364,94 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
   color: #fff;
 }
 .launcher-btn-update {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: var(--primary);
   color: #fff;
+  border-radius: 6px;
+  animation: update-pulse 2s ease-in-out infinite;
 }
-.launcher-btn-check-update {
-  background: transparent;
+.launcher-btn-update:hover {
+  animation: none;
+  opacity: 0.9;
+}
+@keyframes update-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(99,140,255,0.5); }
+  50% { box-shadow: 0 0 12px 4px rgba(99,140,255,0.35); }
+}
+.launcher-more-wrap {
+  position: relative;
+}
+.launcher-btn-more {
+  width: 40px;
+  height: 44px;
   border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
   color: var(--muted);
-  padding: 12px 16px;
-  font-size: 16px;
-  min-width: 44px;
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, color 0.15s;
 }
-.launcher-btn-check-update:hover:not([disabled]) {
+.launcher-btn-more:hover {
   border-color: var(--gold);
   color: var(--gold);
 }
-.launcher-btn-check-update[disabled] {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.launcher-btn-uninstall {
-  background: transparent;
+.launcher-dropdown {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  min-width: 140px;
+  background: var(--surface);
   border: 1px solid var(--border);
-  color: var(--muted);
-  padding: 12px 20px;
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  z-index: 100;
 }
-.launcher-btn-uninstall:hover {
-  border-color: var(--danger);
+.launcher-dropdown.open {
+  display: block;
+}
+.launcher-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.launcher-dropdown-item:hover {
+  background: rgba(255,255,255,0.06);
+}
+.launcher-dropdown-item.danger {
   color: var(--danger);
-  opacity: 1;
 }
-.launcher-btn-open-dir {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--muted);
-  padding: 12px 16px;
-  font-size: 16px;
+.launcher-dropdown-item.danger:hover {
+  background: rgba(255,60,60,0.1);
 }
-.launcher-btn-open-dir:hover {
-  border-color: var(--gold);
-  color: var(--gold);
-  opacity: 1;
+.launcher-dropdown-item.highlight {
+  color: var(--primary);
+  font-weight: 600;
+}
+.launcher-dropdown-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
 }
 
 /* Install Dir */

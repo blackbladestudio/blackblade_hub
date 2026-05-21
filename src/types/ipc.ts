@@ -73,6 +73,7 @@ export interface StudioHubAPI {
     localVersion: string | null;
     needsSync: boolean;
   }> | null; error?: string }>;
+  launcherAbortInstall(): Promise<{ success: boolean }>;
 
   // Updater
   updaterCheck(): Promise<{ available: boolean; currentVersion: string; updateInfo?: { version: string; notes: string; url: string; date: string }; error?: string }>;

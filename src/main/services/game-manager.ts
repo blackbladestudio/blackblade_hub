@@ -13,7 +13,7 @@ import type {
 import { GAME_VARIANTS } from '../../types/launcher';
 import type { MinioConfig, LauncherConfig } from '../../types/config';
 import * as minio from './minio-client';
-import { mcMirror, mcListObjects } from './mc-downloader';
+import { mcMirror, mcListObjects, setActiveStream } from './mc-downloader';
 
 const APP_NAME = 'BlackBlade Hub';
 const STATE_FILE = 'launcher-state.json';
@@ -207,15 +207,17 @@ function findExeInDirectory(dir: string): string | null {
 // Install: directory-based (mc mirror)
 // ---------------------------------------------------------------------------
 
+const LARGE_FILE_THRESHOLD = 500 * 1024 * 1024; // 500MB
+
 async function installDirectoryBuild(
   build: BuildInfo,
   minioConfig: MinioConfig,
   bucket: string,
   installDir: string,
   win: BrowserWindow | null,
+  excludePatterns?: string[],
 ): Promise<void> {
   const { variant, objectKey: prefix } = build;
-  const totalSize = build.size;
 
   emitLog(win, 'info', `[launcher] 开始快速同步 ${variant}: ${prefix}`);
   emitProgress(win, {
@@ -223,35 +225,242 @@ async function installDirectoryBuild(
     phase: 'downloading',
     percent: 0,
     downloadedBytes: 0,
-    totalBytes: totalSize > 0 ? totalSize : undefined,
-    downloadedFiles: 0,
-    message: '正在下载...',
+    message: '正在获取文件列表...',
   });
 
-  await mcMirror(minioConfig, bucket, prefix, installDir, variant, (p) => {
-    if (p.phase === 'downloading') {
-      let percent = p.percent;
-      if (totalSize > 0 && p.downloadedBytes) {
-        percent = Math.min(99, Math.floor((p.downloadedBytes / totalSize) * 100));
-      } else if (p.downloadedBytes && p.downloadedBytes > 0) {
-        percent = -1;
-      }
-      emitProgress(win, {
-        ...p,
-        downloadedBytes: p.downloadedBytes,
-        totalBytes: totalSize > 0 ? totalSize : undefined,
-        downloadedFiles: p.downloadedFiles,
-        totalFiles: p.totalFiles,
-        percent,
-        message: p.message || (p.downloadedBytes ? formatBytes(p.downloadedBytes) + ' 已下载' : '下载中'),
-      });
-    } else {
-      emitProgress(win, p);
-    }
-  }, {
-    totalBytes: totalSize,
+  const remoteObjects = await mcListObjects(minioConfig, bucket, prefix, {
     onLog: (type, msg) => emitLog(win, type, msg),
   });
+  const totalSize = remoteObjects.reduce((sum, obj) => sum + obj.size, 0);
+  const totalFiles = remoteObjects.length;
+
+  const syncPlan = buildSyncPlan(remoteObjects, installDir, prefix);
+  const needSyncBytes = syncPlan.reduce((sum, f) => sum + f.size, 0);
+
+  emitLog(win, 'info', `[launcher] 远端 ${totalFiles} 个文件，共 ${formatBytes(totalSize)}；需同步 ${syncPlan.length} 个文件，${formatBytes(needSyncBytes)}`);
+
+  const removed = cleanupExtraFiles(remoteObjects, installDir, prefix, excludePatterns);
+  if (removed > 0) {
+    emitLog(win, 'info', `[launcher] 清理了 ${removed} 个多余本地文件`);
+  }
+
+  const largeFiles = syncPlan.filter((f) => f.size >= LARGE_FILE_THRESHOLD);
+  const smallFiles = syncPlan.filter((f) => f.size < LARGE_FILE_THRESHOLD);
+  const plannedTotal = needSyncBytes > 0 ? needSyncBytes : totalSize;
+  const plannedFiles = syncPlan.length > 0 ? syncPlan.length : totalFiles;
+
+  let downloadedSoFar = 0;
+  let filesDoneSoFar = 0;
+  let lastProgressTime = Date.now();
+  let lastProgressBytes = 0;
+  let currentSpeed = 0;
+  const speedSamples: Array<{ time: number; bytes: number }> = [];
+
+  const emitOverallProgress = (currentFileBytes: number): void => {
+    const totalDl = downloadedSoFar + currentFileBytes;
+    const now = Date.now();
+    speedSamples.push({ time: now, bytes: totalDl });
+    while (speedSamples.length > 0 && now - speedSamples[0].time > 5000) {
+      speedSamples.shift();
+    }
+    if (speedSamples.length >= 2) {
+      const oldest = speedSamples[0];
+      const elapsed = (now - oldest.time) / 1000;
+      if (elapsed > 0) currentSpeed = Math.max(0, (totalDl - oldest.bytes) / elapsed);
+    }
+    const percent = plannedTotal > 0 ? Math.min(99, Math.floor((totalDl / plannedTotal) * 100)) : 0;
+    emitProgress(win, {
+      variant,
+      phase: 'downloading',
+      percent,
+      downloadedBytes: totalDl,
+      totalBytes: plannedTotal > 0 ? plannedTotal : undefined,
+      downloadedFiles: filesDoneSoFar,
+      totalFiles: plannedFiles > 0 ? plannedFiles : undefined,
+      speed: currentSpeed > 0 ? currentSpeed : undefined,
+    });
+  };
+
+  emitOverallProgress(0);
+
+  if (largeFiles.length > 0) {
+    emitLog(win, 'info', `[launcher] ${largeFiles.length} 个大文件 (>500MB) 使用流式下载`);
+    for (const file of largeFiles) {
+      const objectKey = prefix.replace(/\/+$/, '') + '/' + file.relativePath;
+      const targetPath = path.join(installDir, file.relativePath);
+      fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+
+      emitLog(win, 'info', `[launcher] 流式下载: ${file.relativePath} (${formatBytes(file.size)})`);
+
+      await streamDownloadFile(minioConfig, objectKey, targetPath, file.size, (bytes) => {
+        emitOverallProgress(bytes);
+      });
+
+      downloadedSoFar += file.size;
+      filesDoneSoFar++;
+      emitOverallProgress(0);
+    }
+  }
+
+  const largeExcludes = largeFiles.map((f) => f.relativePath.replace(/\\/g, '/'));
+  const allExcludes = [...(excludePatterns ?? []), ...largeExcludes];
+
+  const smallSyncBytes = smallFiles.reduce((sum, f) => sum + f.size, 0);
+
+  if (smallSyncBytes > 0 || largeFiles.length === 0) {
+    await mcMirror(minioConfig, bucket, prefix, installDir, variant, (p) => {
+      if (p.phase === 'downloading') {
+        const mcBytes = p.downloadedBytes ?? 0;
+        const totalDl = downloadedSoFar + mcBytes;
+        const percent = plannedTotal > 0 ? Math.min(99, Math.floor((totalDl / plannedTotal) * 100)) : 0;
+        emitProgress(win, {
+          ...p,
+          downloadedBytes: totalDl,
+          totalBytes: plannedTotal > 0 ? plannedTotal : undefined,
+          downloadedFiles: filesDoneSoFar + (p.downloadedFiles ?? 0),
+          totalFiles: plannedFiles > 0 ? plannedFiles : undefined,
+          percent,
+        });
+      } else {
+        emitProgress(win, p);
+      }
+    }, {
+      totalBytes: smallSyncBytes > 0 ? smallSyncBytes : plannedTotal,
+      totalFiles: smallFiles.length > 0 ? smallFiles.length : plannedFiles,
+      trackedFiles: smallFiles.length > 0 ? smallFiles : undefined,
+      onLog: (type, msg) => emitLog(win, type, msg),
+      excludePatterns: allExcludes.length > 0 ? allExcludes : undefined,
+    });
+  }
+}
+
+async function streamDownloadFile(
+  minioConfig: MinioConfig,
+  objectKey: string,
+  targetPath: string,
+  totalSize: number,
+  onProgress: (downloadedBytes: number) => void,
+): Promise<void> {
+  const tmpPath = targetPath + '.downloading';
+
+  let existingBytes = 0;
+  try {
+    if (fs.existsSync(tmpPath)) {
+      existingBytes = fs.statSync(tmpPath).size;
+      if (existingBytes >= totalSize) {
+        existingBytes = 0;
+        fs.unlinkSync(tmpPath);
+      }
+    }
+  } catch {
+    existingBytes = 0;
+  }
+
+  const stream = existingBytes > 0
+    ? await minio.getPartialObjectStream(minioConfig, objectKey, existingBytes)
+    : await minio.getObjectStream(minioConfig, objectKey);
+  setActiveStream(stream);
+
+  const fileStream = fs.createWriteStream(tmpPath, existingBytes > 0 ? { flags: 'a' } : undefined);
+
+  let downloaded = existingBytes;
+  let lastEmit = 0;
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      stream.on('data', (chunk: Buffer) => {
+        downloaded += chunk.length;
+        const now = Date.now();
+        if (now - lastEmit > 500) {
+          onProgress(downloaded);
+          lastEmit = now;
+        }
+      });
+      stream.on('close', () => {
+        if (downloaded < totalSize) {
+          fileStream.destroy();
+          reject(new Error('下载已中断'));
+        }
+      });
+      stream.pipe(fileStream);
+      fileStream.on('finish', resolve);
+      stream.on('error', (err) => { fileStream.destroy(); reject(err); });
+      fileStream.on('error', reject);
+    });
+
+    onProgress(totalSize);
+
+    if (fs.existsSync(targetPath)) {
+      fs.unlinkSync(targetPath);
+    }
+    fs.renameSync(tmpPath, targetPath);
+  } finally {
+    setActiveStream(null);
+  }
+}
+
+function cleanupExtraFiles(
+  remoteObjects: Array<{ key: string; size: number }>,
+  installDir: string,
+  remotePrefix: string,
+  excludePatterns?: string[],
+): number {
+  const remoteSet = new Set<string>();
+  for (const obj of remoteObjects) {
+    const rel = normalizeObjectRelativePath(obj.key, remotePrefix);
+    if (rel) remoteSet.add(rel.replace(/\\/g, '/').toLowerCase());
+  }
+
+  const excludeRegexes = (excludePatterns ?? []).map((p) => {
+    const escaped = p.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
+    return new RegExp(`^${escaped}$`, 'i');
+  });
+
+  let removed = 0;
+  const localFiles = listLocalFiles(installDir);
+  for (const file of localFiles) {
+    const rel = path.relative(installDir, file).replace(/\\/g, '/');
+    const relLower = rel.toLowerCase();
+
+    if (excludeRegexes.some((re) => re.test(rel) || re.test(relLower))) continue;
+    if (relLower.endsWith('.downloading')) continue;
+
+    if (!remoteSet.has(relLower)) {
+      try {
+        fs.unlinkSync(file);
+        removed++;
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  if (removed > 0) {
+    removeEmptyDirs(installDir);
+  }
+
+  return removed;
+}
+
+function removeEmptyDirs(dir: string): void {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      const full = path.join(dir, entry.name);
+      removeEmptyDirs(full);
+      try {
+        const remaining = fs.readdirSync(full);
+        if (remaining.length === 0) fs.rmdirSync(full);
+      } catch {
+        // ignore
+      }
+    }
+  }
 }
 
 function formatBytes(bytes: number): string {
@@ -259,6 +468,52 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
   if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+}
+
+async function verifyInstalledFiles(
+  minioConfig: MinioConfig,
+  bucket: string,
+  prefix: string,
+  installDir: string,
+  win: BrowserWindow | null,
+  variant: GameVariant,
+): Promise<{ verified: number; missing: number; mismatched: number }> {
+  const remoteObjects = await mcListObjects(minioConfig, bucket, prefix, {
+    onLog: (type, msg) => emitLog(win, type, msg),
+  });
+
+  let verified = 0;
+  let missing = 0;
+  let mismatched = 0;
+  const total = remoteObjects.length;
+
+  for (let i = 0; i < remoteObjects.length; i++) {
+    const obj = remoteObjects[i];
+    const rel = normalizeObjectRelativePath(obj.key, prefix);
+    if (!rel) continue;
+    const localPath = path.join(installDir, rel);
+
+    try {
+      const stat = fs.statSync(localPath);
+      if (stat.size === obj.size) {
+        verified++;
+      } else {
+        mismatched++;
+        emitLog(win, 'error', `[verify] 大小不一致: ${rel} (本地 ${stat.size} vs 远端 ${obj.size})`);
+      }
+    } catch {
+      missing++;
+      emitLog(win, 'error', `[verify] 文件缺失: ${rel}`);
+    }
+
+    if ((i + 1) % 100 === 0 || i === remoteObjects.length - 1) {
+      const percent = Math.floor(((i + 1) / total) * 100);
+      emitProgress(win, { variant, phase: 'verifying', percent, message: `正在校验 ${i + 1} / ${total} 个文件...` });
+    }
+  }
+
+  emitLog(win, 'info', `[verify] 校验完成: ${verified} 正确, ${missing} 缺失, ${mismatched} 不一致`);
+  return { verified, missing, mismatched };
 }
 
 // ---------------------------------------------------------------------------
@@ -347,17 +602,20 @@ export async function installBuild(
   const installDir = path.join(launcherConfig.installDir, variant);
 
   const versionFilePath = getLocalVersionPath(launcherConfig.installDir, variant);
-  let oldVersionContent: string | null = null;
-  try {
-    if (fs.existsSync(versionFilePath)) {
-      oldVersionContent = fs.readFileSync(versionFilePath, 'utf-8');
-    }
-  } catch { /* ignore */ }
-  try { fs.unlinkSync(versionFilePath); } catch { /* ignore */ }
 
   try {
     if (build.isDirectory) {
-      await installDirectoryBuild(build, minioConfig, minioConfig.bucket, installDir, win);
+      await installDirectoryBuild(build, minioConfig, minioConfig.bucket, installDir, win, launcherConfig.excludePatterns);
+
+      emitProgress(win, { variant, phase: 'verifying', percent: 0, message: '正在校验文件...' });
+      const verifyResult = await verifyInstalledFiles(minioConfig, minioConfig.bucket, build.objectKey, installDir, win, variant);
+      if (verifyResult.mismatched > 0) {
+        throw new Error(`校验失败: ${verifyResult.mismatched} 个文件大小不一致`);
+      }
+      if (verifyResult.missing > 0) {
+        throw new Error(`校验失败: ${verifyResult.missing} 个文件缺失`);
+      }
+      emitProgress(win, { variant, phase: 'verifying', percent: 100, message: `校验完成，${verifyResult.verified} 个文件正确` });
     } else {
       await installZipBuild(build, minioConfig, installDir, win);
     }
@@ -372,6 +630,7 @@ export async function installBuild(
 
     const remoteVersionContent = await getRemoteVersionContent(minioConfig, build);
     if (remoteVersionContent !== null) {
+      fs.mkdirSync(path.dirname(versionFilePath), { recursive: true });
       fs.writeFileSync(versionFilePath, remoteVersionContent, 'utf-8');
     } else {
       try { fs.unlinkSync(versionFilePath); } catch { /* ignore */ }
@@ -405,9 +664,6 @@ export async function installBuild(
     emitProgress(win, { variant, phase: 'done', percent: 100, message: '安装完成' });
     return installed;
   } catch (err) {
-    if (oldVersionContent !== null) {
-      try { fs.writeFileSync(versionFilePath, oldVersionContent, 'utf-8'); } catch { /* ignore */ }
-    }
     const msg = err instanceof Error ? err.message : String(err);
     emitProgress(win, { variant, phase: 'error', percent: 0, message: msg });
     throw err;

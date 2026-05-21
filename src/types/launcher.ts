@@ -43,7 +43,7 @@ export interface LauncherState {
 
 export interface DownloadProgress {
   variant: GameVariant;
-  phase: 'downloading' | 'extracting' | 'done' | 'error';
+  phase: 'downloading' | 'verifying' | 'extracting' | 'done' | 'error';
   percent: number;
   downloadedBytes?: number;
   totalBytes?: number;

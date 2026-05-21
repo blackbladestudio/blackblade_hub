@@ -103,6 +103,39 @@
     </div>
   </section>
 
+  <!-- STUDIO WEB（主页 / Chat / Hue） -->
+  <section id="studio-portal-zone">
+    <div class="section-label">STUDIO</div>
+    <div class="pipeline-grid">
+      <div class="pipeline-card disabled" id="card-studio-home">
+        <div class="pipeline-card-icon studio-home">⌂</div>
+        <div class="pipeline-card-info">
+          <div class="pipeline-card-name">Studio Home</div>
+          <div class="pipeline-card-desc">工作室门户站点</div>
+        </div>
+        <div class="pipeline-status-dot" id="dot-studio-home"></div>
+      </div>
+
+      <div class="pipeline-card disabled" id="card-studio-chat">
+        <div class="pipeline-card-icon studio-chat">💬</div>
+        <div class="pipeline-card-info">
+          <div class="pipeline-card-name">Studio Chat</div>
+          <div class="pipeline-card-desc">AI 对话与历史</div>
+        </div>
+        <div class="pipeline-status-dot" id="dot-studio-chat"></div>
+      </div>
+
+      <div class="pipeline-card disabled" id="card-studio-hue">
+        <div class="pipeline-card-icon studio-hue">◈</div>
+        <div class="pipeline-card-info">
+          <div class="pipeline-card-name">Hue</div>
+          <div class="pipeline-card-desc">无限画布创作</div>
+        </div>
+        <div class="pipeline-status-dot" id="dot-studio-hue"></div>
+      </div>
+    </div>
+  </section>
+
   <!-- PIPELINE ZONE -->
   <section id="pipeline-zone">
     <div class="section-label">PIPELINE</div>
@@ -278,10 +311,12 @@
     <div class="launcher-progress" id="launcher-progress" style="display:none">
       <div class="launcher-progress-top">
         <div>
-          <div class="launcher-progress-kicker">同步任务</div>
           <div class="launcher-progress-label" id="launcher-progress-label">准备中...</div>
         </div>
-        <div class="launcher-progress-percent" id="launcher-progress-percent">0%</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="launcher-progress-percent" id="launcher-progress-percent">0%</div>
+          <button class="launcher-btn-abort" id="launcher-btn-abort" title="停止下载">✕</button>
+        </div>
       </div>
       <div class="launcher-progress-bar">
         <div class="launcher-progress-fill" id="launcher-progress-fill"></div>
@@ -292,11 +327,24 @@
     <!-- Actions -->
     <div class="launcher-actions">
       <button class="launcher-btn launcher-btn-install" id="launcher-btn-install">安装游戏</button>
-      <button class="launcher-btn launcher-btn-check-update" id="launcher-btn-check-update" style="display:none" title="检测更新">🔄</button>
-      <button class="launcher-btn launcher-btn-update" id="launcher-btn-update" style="display:none">📥 更新</button>
       <button class="launcher-btn launcher-btn-launch" id="launcher-btn-launch" style="display:none">▶ 启动游戏</button>
-      <button class="launcher-btn launcher-btn-uninstall" id="launcher-btn-uninstall" style="display:none">卸载</button>
-      <button class="launcher-btn launcher-btn-open-dir" id="launcher-btn-open-dir" style="display:none" title="打开目录">📁</button>
+      <button class="launcher-btn launcher-btn-update" id="launcher-btn-update" style="display:none" title="有可用更新">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 2v6h-6"/>
+          <path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+          <path d="M3 22v-6h6"/>
+          <path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+        </svg>
+      </button>
+      <div class="launcher-more-wrap" id="launcher-more-wrap" style="display:none">
+        <button class="launcher-btn-more" id="launcher-btn-more" title="更多操作">⋮</button>
+        <div class="launcher-dropdown" id="launcher-dropdown">
+          <button class="launcher-dropdown-item" id="launcher-btn-check-update">检测更新</button>
+          <button class="launcher-dropdown-item" id="launcher-btn-open-dir">打开目录</button>
+          <div class="launcher-dropdown-divider"></div>
+          <button class="launcher-dropdown-item danger" id="launcher-btn-uninstall">卸载游戏</button>
+        </div>
+      </div>
     </div>
 
     <!-- Install Dir -->
@@ -399,7 +447,19 @@
         <input class="cfg-input" id="cfg-horde" type="text" placeholder="http://10.248.15.20:13340" />
       </div>
 
-
+      <div class="cfg-section-title" style="margin-top:18px;">Studio 门户</div>
+      <div class="cfg-row">
+        <label>Studio Home</label>
+        <input class="cfg-input" id="cfg-studio-home" type="text" placeholder="http://10.248.15.20:8081/" />
+      </div>
+      <div class="cfg-row">
+        <label>Studio Chat</label>
+        <input class="cfg-input" id="cfg-studio-chat" type="text" placeholder="http://10.248.15.20/chat" />
+      </div>
+      <div class="cfg-row">
+        <label>Hue Web</label>
+        <input class="cfg-input" id="cfg-studio-hue" type="text" placeholder="http://10.248.15.20:4080/" />
+      </div>
 
       <div class="cfg-row">
         <label>环境配置脚本</label>

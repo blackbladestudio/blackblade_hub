@@ -1,9 +1,32 @@
-import { spawn } from 'child_process';
+import { spawn, type ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { resolvePath } from '../utils';
 import type { MinioConfig } from '../../types/config';
 import type { GameVariant, DownloadProgress } from '../../types/launcher';
+import type { Readable } from 'stream';
+
+let activeMirrorProcess: ChildProcess | null = null;
+let activeStream: Readable | null = null;
+
+export function setActiveStream(stream: Readable | null): void {
+  activeStream = stream;
+}
+
+export function abortMirror(): boolean {
+  let aborted = false;
+  if (activeStream) {
+    activeStream.destroy();
+    activeStream = null;
+    aborted = true;
+  }
+  if (activeMirrorProcess && !activeMirrorProcess.killed) {
+    activeMirrorProcess.kill();
+    activeMirrorProcess = null;
+    aborted = true;
+  }
+  return aborted;
+}
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return bytes + ' B';
@@ -74,6 +97,8 @@ export async function mcMirror(
     totalFiles?: number;
     trackedFiles?: Array<{ relativePath: string; size: number; initialSize?: number }>;
     onLog?: (type: 'stdout' | 'stderr' | 'info' | 'error', msg: string) => void;
+    /** mc mirror --exclude patterns; matching files/folders are skipped and not deleted by --remove */
+    excludePatterns?: string[];
   } = {},
 ): Promise<void> {
   const mc = findMcBinary();
@@ -84,10 +109,11 @@ export async function mcMirror(
   const normalizedPrefix = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix;
   const remotePath = `${MC_ALIAS}/${bucket}/${normalizedPrefix}`;
 
-  const baseSnapshot = snapshotLocalFiles(localDir);
+  const baseSnapshot = options.trackedFiles?.length ? new Map<string, number>() : snapshotLocalFiles(localDir);
   fs.mkdirSync(localDir, { recursive: true });
 
   return new Promise<void>((resolve, reject) => {
+    const excludeArgs = options.excludePatterns?.flatMap((p) => ['--exclude', p]) ?? [];
     const args = [
       'mirror',
       '--overwrite',
@@ -97,6 +123,7 @@ export async function mcMirror(
       String(maxWorkers),
       '--retry',
       '--summary',
+      ...excludeArgs,
       remotePath,
       localDir,
     ];
@@ -109,6 +136,7 @@ export async function mcMirror(
     log('info', `[mc-mirror] running: "${mc}" ${args.map((arg) => JSON.stringify(arg)).join(' ')}`);
 
     const child = spawn(mc, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    activeMirrorProcess = child;
     let stdoutBuffer = '';
     let stderrBuffer = '';
     let stderrText = '';
@@ -119,10 +147,10 @@ export async function mcMirror(
     let transferredCount = 0;
     let lastScannedBytes = 0;
     let lastScannedFiles = 0;
-    let lastEmitTime = Date.now();
-    let lastEmitBytes = 0;
     let currentSpeed = 0;
     const errorMessages: string[] = [];
+    const speedSamples: Array<{ time: number; bytes: number }> = [];
+    const SPEED_WINDOW_MS = 5000;
 
     const scanLocalProgress = (): { bytes: number; files: number } => {
       let bytes = 0;
@@ -135,7 +163,11 @@ export async function mcMirror(
           try {
             currentSize = fs.statSync(full).size;
           } catch {
-            continue;
+            try {
+              currentSize = fs.statSync(full + '.part.minio').size;
+            } catch {
+              continue;
+            }
           }
 
           if (currentSize === file.size) {
@@ -148,7 +180,7 @@ export async function mcMirror(
             continue;
           }
 
-          if (currentSize < file.size) {
+          if (currentSize > 0 && currentSize < file.size) {
             bytes += currentSize;
           }
         }
@@ -200,11 +232,16 @@ export async function mcMirror(
       const actualBytes = Math.max(transferredBytes, lastScannedBytes);
       const actualFiles = Math.max(transferredCount, lastScannedFiles);
       const now = Date.now();
-      const elapsed = (now - lastEmitTime) / 1000;
-      if (elapsed > 0) {
-        currentSpeed = Math.max(0, (actualBytes - lastEmitBytes) / elapsed);
-        lastEmitBytes = actualBytes;
-        lastEmitTime = now;
+      speedSamples.push({ time: now, bytes: actualBytes });
+      while (speedSamples.length > 0 && now - speedSamples[0].time > SPEED_WINDOW_MS) {
+        speedSamples.shift();
+      }
+      if (speedSamples.length >= 2) {
+        const oldest = speedSamples[0];
+        const elapsed = (now - oldest.time) / 1000;
+        if (elapsed > 0) {
+          currentSpeed = Math.max(0, (actualBytes - oldest.bytes) / elapsed);
+        }
       }
 
       const percent = plannedTotalBytes > 0
@@ -217,9 +254,9 @@ export async function mcMirror(
         variant,
         phase: 'downloading',
         percent,
-        downloadedBytes: actualBytes > 0 ? actualBytes : undefined,
+        downloadedBytes: actualBytes,
         totalBytes: plannedTotalBytes > 0 ? plannedTotalBytes : undefined,
-        downloadedFiles: actualFiles > 0 ? actualFiles : undefined,
+        downloadedFiles: actualFiles,
         totalFiles: plannedTotalFiles > 0 ? plannedTotalFiles : undefined,
         speed: currentSpeed > 0 ? currentSpeed : undefined,
         message,
@@ -231,39 +268,28 @@ export async function mcMirror(
     }, 1000);
 
     const handleJsonMessage = (msg: any, line: string): void => {
-      if (options.trackedFiles && options.trackedFiles.length > 0) {
-        if (msg.status === 'success' && msg.type === 'file') {
-          emitDownloadingProgress(undefined, true);
-        } else if (msg.status === 'error') {
-          const message = msg.error?.cause?.message || msg.error?.message || line;
-          errorMessages.push(message);
-          log('error', `[mc-mirror] error: ${message}`);
-          onProgress({ variant, phase: 'error', percent: 0, message });
-        }
+      if (msg.status === 'error') {
+        const message = msg.error?.cause?.message || msg.error?.message || line;
+        errorMessages.push(message);
+        log('error', `[mc-mirror] error: ${message}`);
+        onProgress({ variant, phase: 'error', percent: 0, message });
         return;
       }
 
       if (msg.status === 'progress') {
         if (typeof msg.size === 'number') transferredBytes = Math.max(transferredBytes, msg.size);
         if (typeof msg.transferred === 'number') transferredBytes = Math.max(transferredBytes, msg.transferred);
-        emitDownloadingProgress(`${transferredCount} 个文件，${formatBytes(transferredBytes)} 已下载`);
+        emitDownloadingProgress();
         return;
       }
 
       if (msg.status === 'success' || msg.type === 'file') {
-        if (typeof msg.totalSize === 'number') transferredBytes = msg.totalSize;
-        else if (typeof msg.accumulativeSize === 'number') transferredBytes = msg.accumulativeSize;
+        if (typeof msg.totalSize === 'number') transferredBytes = Math.max(transferredBytes, msg.totalSize);
+        else if (typeof msg.accumulativeSize === 'number') transferredBytes = Math.max(transferredBytes, msg.accumulativeSize);
         else if (typeof msg.size === 'number') transferredBytes += msg.size;
         if (msg.type !== 'summary') transferredCount += 1;
-        emitDownloadingProgress(`${transferredCount} 个文件，${formatBytes(transferredBytes)} 已下载`);
+        emitDownloadingProgress();
         return;
-      }
-
-      if (msg.status === 'error') {
-        const message = msg.error?.cause?.message || msg.error?.message || line;
-        errorMessages.push(message);
-        log('error', `[mc-mirror] error: ${message}`);
-        onProgress({ variant, phase: 'error', percent: 0, message });
       }
     };
 
@@ -307,14 +333,15 @@ export async function mcMirror(
     child.on('error', (err) => {
       if (settled) return;
       settled = true;
+      activeMirrorProcess = null;
       clearInterval(scanTimer);
-      try { fs.rmSync(localDir, { recursive: true, force: true }); } catch { /* ignore */ }
       reject(new Error(`mc mirror 启动失败: ${err.message}`));
     });
 
     child.on('close', (code) => {
       if (settled) return;
       settled = true;
+      activeMirrorProcess = null;
       clearInterval(scanTimer);
 
       handleLine('stdout', stdoutBuffer);
@@ -324,7 +351,6 @@ export async function mcMirror(
       log('info', `[mc-mirror] closed: code=${code}, files=${Math.max(transferredCount, lastScannedFiles)}, bytes=${Math.max(transferredBytes, lastScannedBytes)}`);
 
       if (code !== 0 || errorMessages.length > 0) {
-        try { fs.rmSync(localDir, { recursive: true, force: true }); } catch { /* ignore */ }
         reject(new Error(errorMessages[0] || stderrText.trim() || `mc mirror 退出码: ${code}`));
         return;
       }

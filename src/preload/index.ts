@@ -41,6 +41,7 @@ const api: StudioHubAPI = {
   },
   launcherForceCheckUpdates: (variant, objectKey) =>
     ipcRenderer.invoke('launcher:force-check-updates', variant, objectKey),
+  launcherAbortInstall: () => ipcRenderer.invoke('launcher:abort-install'),
 
   // Updater
   updaterCheck: () => ipcRenderer.invoke('updater:check'),

@@ -74,6 +74,12 @@ export function initLauncher(getConfig: () => AppConfig): void {
   document.getElementById('launcher-btn-uninstall')!.addEventListener('click', handleUninstall);
   document.getElementById('launcher-btn-browse-dir')!.addEventListener('click', handleBrowseDir);
   document.getElementById('launcher-btn-open-dir')!.addEventListener('click', handleOpenDir);
+  document.getElementById('launcher-btn-abort')!.addEventListener('click', handleAbortInstall);
+  document.getElementById('launcher-btn-more')!.addEventListener('click', toggleDropdown);
+  document.addEventListener('click', (e) => {
+    const wrap = document.getElementById('launcher-more-wrap')!;
+    if (!wrap.contains(e.target as Node)) closeDropdown();
+  });
   document.getElementById('launcher-remote-build-select')!.addEventListener('change', (event) => {
     selectedBuildKeys[currentVariant] = (event.target as HTMLSelectElement).value;
     renderVariant(currentVariant);
@@ -308,8 +314,10 @@ function showPanel(panel: 'not-configured' | 'no-builds' | 'details'): void {
 }
 
 function hideAllActions(): void {
-  ['launcher-btn-install', 'launcher-btn-launch', 'launcher-btn-update', 'launcher-btn-check-update', 'launcher-btn-uninstall', 'launcher-btn-open-dir']
-    .forEach((id) => ((document.getElementById(id) as HTMLElement).style.display = 'none'));
+  (document.getElementById('launcher-btn-install') as HTMLElement).style.display = 'none';
+  (document.getElementById('launcher-btn-launch') as HTMLElement).style.display = 'none';
+  (document.getElementById('launcher-btn-update') as HTMLElement).style.display = 'none';
+  (document.getElementById('launcher-more-wrap') as HTMLElement).style.display = 'none';
 }
 
 function renderVariant(variant: GameVariant): void {
@@ -356,24 +364,17 @@ function renderVariant(variant: GameVariant): void {
 
   const btnInstall = document.getElementById('launcher-btn-install') as HTMLElement;
   const btnLaunch = document.getElementById('launcher-btn-launch') as HTMLElement;
-  const btnUpdate = document.getElementById('launcher-btn-update') as HTMLElement;
-  const btnCheckUpdate = document.getElementById('launcher-btn-check-update') as HTMLElement;
-  const btnUninstall = document.getElementById('launcher-btn-uninstall') as HTMLElement;
 
   if (!installed) {
     btnInstall.style.display = '';
-    btnUpdate.style.display = 'none';
-    btnCheckUpdate.style.display = 'none';
     btnLaunch.style.display = 'none';
-    btnUninstall.style.display = 'none';
-    document.getElementById('launcher-btn-open-dir')!.style.display = 'none';
+    (document.getElementById('launcher-btn-update') as HTMLElement).style.display = 'none';
+    (document.getElementById('launcher-more-wrap') as HTMLElement).style.display = 'none';
   } else {
     btnInstall.style.display = 'none';
     btnLaunch.style.display = '';
-    btnUninstall.style.display = '';
-    btnCheckUpdate.style.display = '';
-    document.getElementById('launcher-btn-open-dir')!.style.display = '';
-    checkVersionUpdate(variant, installed, build);
+    (document.getElementById('launcher-btn-update') as HTMLElement).style.display = 'none';
+    (document.getElementById('launcher-more-wrap') as HTMLElement).style.display = '';
   }
 }
 
@@ -383,12 +384,10 @@ async function checkVersionUpdate(
   build: BuildInfo,
 ): Promise<void> {
   const btnUpdate = document.getElementById('launcher-btn-update') as HTMLElement;
-  const btnCheckUpdate = document.getElementById('launcher-btn-check-update') as HTMLElement;
 
   const dirHasUpdate = installed.version !== build.version || installed.buildNumber !== build.buildNumber;
   if (dirHasUpdate) {
     btnUpdate.style.display = '';
-    btnCheckUpdate.style.display = 'none';
     return;
   }
 
@@ -396,7 +395,6 @@ async function checkVersionUpdate(
     const result = await window.studioHub.launcherCheckUpdates(variant, build.objectKey);
     if (result.hasUpdate) {
       btnUpdate.style.display = '';
-      btnCheckUpdate.style.display = 'none';
       const localInfoEl = document.getElementById('launcher-local-info')!;
       const versionEl = document.getElementById('launcher-local-version')!;
       if (result.localVersion && result.remoteVersion) {
@@ -405,12 +403,10 @@ async function checkVersionUpdate(
       }
     } else {
       btnUpdate.style.display = 'none';
-      btnCheckUpdate.style.display = '';
     }
   } catch {
     const dirFallback = installed.version !== build.version || installed.buildNumber !== build.buildNumber;
     btnUpdate.style.display = dirFallback ? '' : 'none';
-    btnCheckUpdate.style.display = dirFallback ? 'none' : '';
   }
 }
 
@@ -418,6 +414,7 @@ async function checkVersionUpdate(
 
 async function handleInstall(): Promise<void> {
   if (isInstalling) return;
+  closeDropdown();
 
   const config = getConfigRef!();
   if (!config.launcher?.installDir) {
@@ -452,7 +449,8 @@ async function handleInstall(): Promise<void> {
 
 async function handleForceCheckUpdate(): Promise<void> {
   const btnCheck = document.getElementById('launcher-btn-check-update') as HTMLElement;
-  btnCheck.textContent = '⏳';
+  const origText = btnCheck.textContent;
+  btnCheck.textContent = '检测中...';
   btnCheck.setAttribute('disabled', 'true');
 
   try {
@@ -493,8 +491,9 @@ async function handleForceCheckUpdate(): Promise<void> {
   } catch (err) {
     toast(`检测更新失败: ${err instanceof Error ? err.message : String(err)}`);
   } finally {
-    btnCheck.textContent = '🔄';
+    btnCheck.textContent = origText;
     btnCheck.removeAttribute('disabled');
+    closeDropdown();
   }
 }
 
@@ -523,6 +522,7 @@ async function handleLaunch(): Promise<void> {
 }
 
 async function handleUninstall(): Promise<void> {
+  closeDropdown();
   const result = await window.studioHub.launcherUninstall(currentVariant);
   if (result.success) {
     toast(`${currentVariant} 已卸载`);
@@ -548,10 +548,31 @@ async function handleBrowseDir(): Promise<void> {
 }
 
 async function handleOpenDir(): Promise<void> {
+  closeDropdown();
   const result = await window.studioHub.launcherOpenInstallDir(currentVariant);
   if (!result.success) {
     toast('打开目录失败: ' + result.error);
   }
+}
+
+async function handleAbortInstall(): Promise<void> {
+  if (!isInstalling) return;
+  const result = await window.studioHub.launcherAbortInstall();
+  if (result.success) {
+    toast('下载已中断');
+  }
+}
+
+// --- Dropdown Menu ---
+
+function toggleDropdown(): void {
+  const dropdown = document.getElementById('launcher-dropdown')!;
+  dropdown.classList.toggle('open');
+}
+
+function closeDropdown(): void {
+  const dropdown = document.getElementById('launcher-dropdown')!;
+  dropdown.classList.remove('open');
 }
 
 // --- Progress ---
@@ -563,6 +584,7 @@ function showProgressBar(): void {
   (document.getElementById('launcher-progress-percent') as HTMLElement).textContent = '0%';
   document.getElementById('launcher-progress-label')!.textContent = '准备中...';
   document.getElementById('launcher-progress-detail')!.textContent = '';
+  (document.getElementById('launcher-btn-abort') as HTMLElement).style.display = '';
 }
 
 function hideProgressBar(): void {
@@ -593,42 +615,45 @@ function handleProgress(progress: DownloadProgress): void {
       } else {
         label.textContent = '正在同步游戏文件';
       }
-      if (progress.downloadedBytes != null) {
+      if (progress.downloadedBytes != null && progress.totalBytes) {
         const downloadedStr = formatBytes(progress.downloadedBytes);
+        const speedText = progress.speed ? formatBytes(Math.round(progress.speed)) + '/s' : '计算中';
+        const remaining = Math.max(0, progress.totalBytes - progress.downloadedBytes);
         const fileText = progress.totalFiles
           ? ` · ${progress.downloadedFiles ?? 0} / ${progress.totalFiles} 文件`
-          : progress.downloadedFiles
-            ? ` · ${progress.downloadedFiles} 文件`
-            : '';
-        if (progress.totalBytes) {
-          const speed = progress.speed ? formatBytes(Math.round(progress.speed)) + '/s' : '计算中';
-          detail.textContent = `${downloadedStr} / ${formatBytes(progress.totalBytes)} · ${speed}${fileText}`;
-        } else {
-          detail.textContent = downloadedStr + ' 已下载' + fileText;
-        }
-      } else if (progress.totalFiles) {
-        detail.textContent = `${progress.downloadedFiles ?? 0} / ${progress.totalFiles} 文件`;
-      } else if (progress.downloadedFiles) {
-        detail.textContent = `${progress.downloadedFiles} 个文件`;
+          : '';
+        detail.textContent = `${downloadedStr} / ${formatBytes(progress.totalBytes)} · 剩余 ${formatBytes(remaining)} · ${speedText}${fileText}`;
+      } else if (progress.downloadedBytes && progress.downloadedBytes > 0) {
+        const downloadedStr = formatBytes(progress.downloadedBytes);
+        const speedText = progress.speed ? formatBytes(Math.round(progress.speed)) + '/s' : '计算中';
+        const fileText = progress.downloadedFiles ? ` · ${progress.downloadedFiles} 文件` : '';
+        detail.textContent = `${downloadedStr} 已下载 · ${speedText}${fileText}`;
       } else {
-        detail.textContent = progress.message || '下载中';
+        detail.textContent = progress.message || '准备中...';
       }
       break;
     case 'extracting':
       label.textContent = progress.message || '解压中...';
       detail.textContent = '';
       break;
+    case 'verifying':
+      label.textContent = progress.message || '正在校验文件...';
+      detail.textContent = '';
+      (document.getElementById('launcher-btn-abort') as HTMLElement).style.display = 'none';
+      break;
     case 'done':
       label.textContent = '安装完成';
       fill.style.background = 'var(--green)';
       percentEl.textContent = '100%';
       detail.textContent = '';
+      (document.getElementById('launcher-btn-abort') as HTMLElement).style.display = 'none';
       break;
     case 'error':
       label.textContent = '安装失败';
       fill.style.background = 'var(--danger)';
       percentEl.textContent = '失败';
       detail.textContent = progress.message || '';
+      (document.getElementById('launcher-btn-abort') as HTMLElement).style.display = 'none';
       break;
   }
 }

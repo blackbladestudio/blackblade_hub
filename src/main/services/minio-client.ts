@@ -34,6 +34,11 @@ export async function getObjectStream(config: MinioConfig, key: string): Promise
   return c.getObject(config.bucket, key) as unknown as Promise<Readable>;
 }
 
+export async function getPartialObjectStream(config: MinioConfig, key: string, offset: number): Promise<Readable> {
+  const c = ensureClient(config);
+  return c.getPartialObject(config.bucket, key, offset) as unknown as Promise<Readable>;
+}
+
 // ---------------------------------------------------------------------------
 // Object listing
 // ---------------------------------------------------------------------------

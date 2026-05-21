@@ -2,6 +2,7 @@ import { ipcMain, dialog, BrowserWindow, shell } from 'electron';
 import { loadConfig } from '../config';
 import * as minioClient from '../services/minio-client';
 import * as gameManager from '../services/game-manager';
+import { abortMirror } from '../services/mc-downloader';
 import type { GameVariant } from '../../types/launcher';
 
 export function registerLauncherHandlers(getMainWindow: () => BrowserWindow | null): void {
@@ -191,5 +192,10 @@ export function registerLauncherHandlers(getMainWindow: () => BrowserWindow | nu
     } catch (err) {
       return { data: null, error: err instanceof Error ? err.message : String(err) };
     }
+  });
+
+  ipcMain.handle('launcher:abort-install', () => {
+    const aborted = abortMirror();
+    return { success: aborted };
   });
 }
