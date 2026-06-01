@@ -16,6 +16,11 @@ const api: StudioHubAPI = {
   getHordeAgentStatus: () => ipcRenderer.invoke('get-horde-agent-status'),
   startHordeAgent: () => ipcRenderer.invoke('start-horde-agent'),
   stopHordeAgent: () => ipcRenderer.invoke('stop-horde-agent'),
+  getBbCliStatus: () => ipcRenderer.invoke('get-bb-cli-status'),
+  runBbCliCommand: (args: string[]) => ipcRenderer.invoke('run-bb-cli-command', args),
+  onBbCliOutput(callback) {
+    ipcRenderer.on('bb-cli-output', (_e, msg) => callback(msg));
+  },
   winMinimize: () => ipcRenderer.send('win-minimize'),
   winMaximize: () => ipcRenderer.send('win-maximize'),
   winClose: () => ipcRenderer.send('win-close'),

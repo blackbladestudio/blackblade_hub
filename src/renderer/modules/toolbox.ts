@@ -1,16 +1,45 @@
 import { toast, setStatus } from '../utils';
 import { showLogPanel, setLogHook } from './log-panel';
 
+let cliOutputCallback: ((type: string, msg: string) => void) | null = null;
+let isCliReady = false;
+
 export function initToolbox(): void {
   document.getElementById('card-horde-agent')!.addEventListener('click', showHordeAgentPage);
   document.getElementById('card-unreal-toolbox')!.addEventListener('click', installUnrealToolbox);
   document.getElementById('card-setup-env-vars')!.addEventListener('click', setupEnvVars);
+  document.getElementById('card-bb-cli')!.addEventListener('click', handleBbCliClick);
 
   document.getElementById('ha-page-btn-install')!.addEventListener('click', haInstall);
   document.getElementById('ha-page-btn-start')!.addEventListener('click', haStart);
   document.getElementById('ha-page-btn-stop')!.addEventListener('click', haStop);
 
   document.querySelector('#horde-page .page-back')!.addEventListener('click', hideHordeAgentPage);
+  document.getElementById('cli-back')!.addEventListener('click', hideCliPage);
+
+  const cliInput = document.getElementById('cli-input') as HTMLInputElement;
+  cliInput.addEventListener('keydown', handleCliInputKeydown);
+
+  window.studioHub.onBbCliOutput((msg) => {
+    if (cliOutputCallback) {
+      cliOutputCallback(msg.type, msg.msg);
+    }
+    appendCliLine(msg.type, msg.msg);
+  });
+}
+
+async function handleBbCliClick(): Promise<void> {
+  const status = await window.studioHub.getBbCliStatus();
+
+  if (!status.isInstalled) {
+    await installBbCli();
+    const newStatus = await window.studioHub.getBbCliStatus();
+    if (newStatus.isInstalled) {
+      showCliPage();
+    }
+  } else {
+    showCliPage();
+  }
 }
 
 export async function refreshHordeAgentStatus(): Promise<void> {
@@ -167,5 +196,125 @@ async function installUnrealToolbox(): Promise<void> {
       card?.classList.remove('installing');
       if (fill) fill.style.background = '';
     }, 3000);
+  }
+}
+
+async function installBbCli(): Promise<void> {
+  const card = document.getElementById('card-bb-cli');
+  const dot = document.getElementById('dot-bb-cli');
+  const progress = document.getElementById('progress-bb-cli');
+  const fill = document.getElementById('progress-fill-bb-cli') as HTMLElement | null;
+  const label = document.getElementById('progress-label-bb-cli');
+
+  card?.classList.add('installing');
+  if (dot) dot.className = 'pipeline-status-dot warning';
+  progress?.classList.add('visible');
+
+  function setProgress(pct: number, text: string): void {
+    if (fill) fill.style.width = pct + '%';
+    if (label) label.textContent = text;
+  }
+
+  setProgress(10, '正在安装 bb CLI...');
+  setStatus('warning', '正在安装 BlackBlade CLI...');
+
+  setLogHook((_type, msg) => {
+    if (msg.includes('Checking source')) setProgress(20, '检查源文件...');
+    else if (msg.includes('Installing to')) setProgress(40, '复制文件...');
+    else if (msg.includes('Adding to user PATH')) setProgress(60, '配置 PATH...');
+    else if (msg.includes('Verifying')) setProgress(80, '验证安装...');
+    else if (msg.includes('installed successfully')) setProgress(100, '安装完成 ✓');
+  });
+
+  const result = await window.studioHub.runScript('tools/install_bb_cli.ps1');
+  setLogHook(null);
+
+  if (result.success) {
+    setProgress(100, '安装完成 ✓');
+    if (fill) fill.style.background = 'var(--green)';
+    if (dot) dot.className = 'pipeline-status-dot ready';
+    toast('BlackBlade CLI 安装完成');
+    setStatus('ok', '就绪');
+    setTimeout(() => {
+      progress?.classList.remove('visible');
+      card?.classList.remove('installing');
+    }, 2000);
+  } else {
+    setProgress(100, '安装失败');
+    if (fill) fill.style.background = 'var(--danger)';
+    if (dot) dot.className = 'pipeline-status-dot error';
+    toast(`安装失败: ${result.error}`);
+    setStatus('error', '安装失败');
+    setTimeout(() => {
+      progress?.classList.remove('visible');
+      card?.classList.remove('installing');
+      if (fill) fill.style.background = '';
+    }, 3000);
+  }
+}
+
+function showCliPage(): void {
+  document.getElementById('cli-page')!.classList.remove('page-hidden');
+  initCliTerminal();
+}
+
+function hideCliPage(): void {
+  document.getElementById('cli-page')!.classList.add('page-hidden');
+}
+
+function initCliTerminal(): void {
+  const output = document.getElementById('cli-output')!;
+  const badge = document.getElementById('cli-status-badge')!;
+  const input = document.getElementById('cli-input') as HTMLInputElement;
+
+  output.innerHTML = '';
+  badge.textContent = '就绪';
+  badge.className = 'cli-terminal-badge ready';
+  input.value = '';
+  input.focus();
+
+  appendCliLine('welcome', 'BlackBlade CLI Terminal');
+  appendCliLine('info', 'Type "bb --help" to see available commands');
+  appendCliLine('info', '');
+  isCliReady = true;
+}
+
+function appendCliLine(type: string, msg: string): void {
+  const output = document.getElementById('cli-output');
+  if (!output) return;
+
+  const line = document.createElement('pre');
+  line.className = `cli-line ${type}`;
+  line.textContent = msg;
+  output.appendChild(line);
+  output.scrollTop = output.scrollHeight;
+}
+
+async function handleCliInputKeydown(e: KeyboardEvent): Promise<void> {
+  if (e.key !== 'Enter') return;
+
+  const input = e.target as HTMLInputElement;
+  const cmd = input.value.trim();
+
+  if (!cmd) return;
+
+  input.value = '';
+
+  if (cmd === 'clear') {
+    const output = document.getElementById('cli-output')!;
+    output.innerHTML = '';
+    appendCliLine('welcome', 'BlackBlade CLI Terminal');
+    appendCliLine('info', 'Type "bb --help" to see available commands');
+    appendCliLine('info', '');
+    return;
+  }
+
+  appendCliLine('cmd', `❯ ${cmd}`);
+
+  const args = cmd.split(' ').filter(a => a.length > 0);
+  const result = await window.studioHub.runBbCliCommand(args);
+
+  if (!result.success) {
+    appendCliLine('error', result.error || 'Command failed');
   }
 }

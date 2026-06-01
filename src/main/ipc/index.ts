@@ -7,6 +7,7 @@ import { registerHordeHandlers } from './horde';
 import { registerLauncherHandlers } from './launcher';
 import { registerUgsHandlers } from './ugs';
 import { registerUpdaterHandlers } from './updater';
+import { registerBbCliHandlers } from './bb_cli';
 
 export function registerAllHandlers(getMainWindow: () => BrowserWindow | null): void {
   registerConfigHandlers();
@@ -17,4 +18,5 @@ export function registerAllHandlers(getMainWindow: () => BrowserWindow | null): 
   registerLauncherHandlers(getMainWindow);
   registerUgsHandlers();
   registerUpdaterHandlers();
+  registerBbCliHandlers(getMainWindow);
 }

@@ -25,6 +25,17 @@ export interface HordeAgentStatus {
   workDir: string;
 }
 
+export interface BbCliStatus {
+  isInstalled: boolean;
+  installPath: string | null;
+  version: string | null;
+}
+
+export interface CliOutputMessage {
+  type: 'stdout' | 'stderr' | 'info' | 'error' | 'exit';
+  msg: string;
+}
+
 export interface ScriptLogMessage {
   type: 'stdout' | 'stderr' | 'info' | 'error';
   msg: string;
@@ -43,6 +54,9 @@ export interface StudioHubAPI {
   getHordeAgentStatus(): Promise<HordeAgentStatus>;
   startHordeAgent(): Promise<LaunchResult>;
   stopHordeAgent(): Promise<LaunchResult>;
+  getBbCliStatus(): Promise<BbCliStatus>;
+  runBbCliCommand(args: string[]): Promise<{ success: boolean; error?: string }>;
+  onBbCliOutput(callback: (msg: CliOutputMessage) => void): void;
   winMinimize(): void;
   winMaximize(): void;
   winClose(): void;
