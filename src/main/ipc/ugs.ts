@@ -119,8 +119,9 @@ export function registerUgsHandlers(): void {
   });
 
   /**
-   * 命令行同步 UE 项目：p4 sync 同步内容 + Horde API 下载 precompiled binaries
-   * 全程无 GUI 弹窗，日志实时输出到面板
+   * 同步 UE 项目：
+   * 1. UGS sync — 更新 precompiled binaries（静默，CreateNoWindow）
+   * 2. p4 sync  — 同步内容到最新（实时日志）
    */
   ipcMain.handle('ugs:sync-project', async (_event, uprojectPath: string) => {
     if (!uprojectPath?.trim()) {
@@ -135,69 +136,75 @@ export function registerUgsHandlers(): void {
       ? path.dirname(uprojectPath.trim())
       : uprojectPath.trim();
 
-    sendLog('info', `[同步] 项目目录: ${projectDir}`);
+    // ── Step 1: UGS sync — 更新 precompiled binaries ──
+    sendLog('info', '[UGS] 开始更新 precompiled binaries...');
 
-    // ── Step 1: 获取 Perforce depot 路径 ──
-    let depotPath = '';
+    const ugsResult = await new Promise<SpawnResult>((resolve) => {
+      import('child_process').then(({ spawn }) => {
+        // Start-Process -WindowStyle Hidden -Wait：静默等待 UGS sync 完成
+        const ps = spawn(
+          'powershell',
+          [
+            '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+            '-Command',
+            `Start-Process -FilePath 'C:\\Program Files (x86)\\UnrealGameSync\\UnrealGameSync.exe' -ArgumentList '-sync' -WorkingDirectory '${projectDir.replace(/\\/g, '\\\\')}' -WindowStyle Hidden -Wait -PassThru | Select-Object -ExpandProperty ExitCode`,
+          ],
+          { shell: false, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
+        );
+
+        let stderr = '';
+        ps.stdout?.on('data', (c: Buffer) => {
+          const line = c.toString().trim();
+          if (line && !/^\d+$/.test(line)) sendLog('stdout', '[UGS] ' + line);
+        });
+        ps.stderr?.on('data', (c: Buffer) => {
+          const l = c.toString().trim();
+          if (l) { stderr += l + '\n'; sendLog('stderr', '[UGS] ' + l); }
+        });
+        ps.on('close', (code) => {
+          sendLog('info', `[UGS] sync 完成，exit code: ${code}`);
+          resolve({ success: code === 0 || code === null, error: stderr || undefined });
+        });
+        ps.on('error', (e: Error) => {
+          sendLog('error', '[UGS] 启动失败: ' + e.message);
+          resolve({ success: false, error: e.message });
+        });
+      });
+    });
+
+    if (!ugsResult.success) {
+      sendLog('error', `[UGS] precompiled binary 更新失败: ${ugsResult.error}`);
+      return { success: false, error: ugsResult.error };
+    }
+
+    // ── Step 2: p4 sync — 同步 content 到最新 ──
+    sendLog('info', '[P4] 开始同步 content...');
+
+    // 先获取 depot 路径
+    let depotPath = '//ProjectZion/mainline';
     try {
       const { stdout } = await execAsync(
         `p4 where "${uprojectPath.trim()}"`,
         { cwd: projectDir, timeout: 30000 },
       );
-      // p4 where 输出: //depot/path //client/path local/path
       const parts = stdout.trim().split(/\s+/);
-      depotPath = parts[0] || '';
-      sendLog('info', `[P4] depot 路径: ${depotPath}`);
+      if (parts[0]) depotPath = parts[0];
+      sendLog('info', `[P4] depot: ${depotPath}`);
     } catch (e) {
-      sendLog('error', `[P4] 获取 depot 路径失败: ${e instanceof Error ? e.message : String(e)}`);
-      depotPath = '//ProjectZion/mainline'; // fallback
-      sendLog('warn', `[P4] 使用默认 depot 路径: ${depotPath}`);
+      sendLog('warn', `[P4] 无法获取 depot 路径，使用默认: ${depotPath}`);
     }
 
-    // ── Step 2: p4 sync 同步内容（实时输出到面板） ──
-    sendLog('info', `[P4] 开始同步内容...`);
-    const syncResult = await spawnLog('p4', ['sync', `${depotPath}/...`], projectDir, sendLog);
-    if (!syncResult.success) {
-      sendLog('error', `[P4] 同步失败: ${syncResult.error}`);
-      return { success: false, error: syncResult.error };
-    }
-    sendLog('info', `[P4] 内容同步完成`);
+    const p4Result = await spawnLog(
+      'p4', ['sync', `${depotPath}/...`],
+      projectDir, sendLog,
+    );
 
-    // ── Step 3: 尝试从 Horde 下载 precompiled binaries ──
-    try {
-      sendLog('info', `[Horde] 检查服务器连接...`);
-      const testRes = await execAsync(
-        `curl -s --connect-timeout 5 -o nul -w "%{http_code}" "${HORDE_URL}/api/v1/server/ping"`,
-        { timeout: 10000 },
-      );
-      const code = parseInt(testRes.stdout.trim());
-      if (code === 200 || code === 401 || code === 403) {
-        sendLog('info', `[Horde] 服务器可达，开始下载 precompiled binaries...`);
-        const projectName = path.basename(projectDir);
-        const binRes = await spawnLog(
-          'curl',
-          [
-            '-L', '--connect-timeout', '30',
-            '-H', `Authorization: Bearer ${HORDE_TOKEN}`,
-            `${HORDE_URL}/api/v1/jobs/by_project/${projectName}/precompiled?stream=true`,
-            '-o', path.join(projectDir, 'Engine', 'Binaries', 'Download.zip'),
-          ],
-          projectDir,
-          sendLog,
-        );
-        if (binRes.success) {
-          sendLog('info', `[Horde] precompiled binaries 下载完成`);
-        } else {
-          sendLog('warn', `[Horde] 下载被跳过或失败: ${binRes.error}`);
-        }
-      } else {
-        sendLog('warn', `[Horde] 服务器不可达 (${code})，跳过二进制下载`);
-      }
-    } catch {
-      sendLog('warn', `[Horde] 无法连接，跳过二进制下载`);
+    if (!p4Result.success) {
+      sendLog('error', `[P4] sync 失败: ${p4Result.error}`);
+      return { success: false, error: p4Result.error };
     }
 
-    sendLog('info', `[同步] 项目已更新到最新，可启动编辑器`);
+    sendLog('info', '[同步] 项目已更新到最新，可启动编辑器');
     return { success: true };
   });
 }
