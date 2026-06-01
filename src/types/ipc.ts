@@ -98,4 +98,5 @@ export interface StudioHubAPI {
   ugsLaunch(): Promise<LaunchResult>;
   ugsOpenDownload(): Promise<void>;
   ugsDownloadAndInstall(): Promise<LaunchResult>;
+  ugsSyncProject(uprojectPath: string): Promise<LaunchResult>;
 }

@@ -5,6 +5,34 @@ export function initLaunch(getConfigRef: () => AppConfig, setConfigRef: (cfg: Ap
   const editorEl = document.getElementById('launch-editor')!;
   editorEl.addEventListener('click', () => handleLaunch('editor', getConfigRef, setConfigRef));
   editorEl.addEventListener('click', (e) => addRipple(editorEl, e));
+
+  // 更新按钮：同步 UE 项目到最新 precompiled-binary + content
+  const syncBtn = document.getElementById('btn-ugs-sync')!;
+  syncBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    await handleUgsSync(getConfigRef);
+  });
+}
+
+async function handleUgsSync(getConfig: () => AppConfig): Promise<void> {
+  const config = getConfig();
+  if (!config.uprojectPath?.trim()) {
+    toast('未配置 UE 项目，请先选择 .uproject 文件');
+    return;
+  }
+
+  setStatus('warning', '正在同步项目...');
+  toast('开始同步项目，详见下方日志面板');
+
+  const result = await window.studioHub.ugsSyncProject(config.uprojectPath);
+
+  if (result.success) {
+    toast('项目同步完成！可以启动编辑器');
+    setStatus('ok', '就绪');
+  } else {
+    toast('同步失败: ' + (result.error || '未知错误'));
+    setStatus('error', '同步失败');
+  }
 }
 
 async function handleLaunch(type: 'game' | 'editor', getConfig: () => AppConfig, setConfig?: (cfg: AppConfig) => void): Promise<void> {

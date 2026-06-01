@@ -57,6 +57,7 @@ const api: StudioHubAPI = {
   ugsLaunch: () => ipcRenderer.invoke('ugs:launch'),
   ugsOpenDownload: () => ipcRenderer.invoke('ugs:open-download'),
   ugsDownloadAndInstall: () => ipcRenderer.invoke('ugs:download-and-install'),
+  ugsSyncProject: (uprojectPath: string) => ipcRenderer.invoke('ugs:sync-project', uprojectPath),
 };
 
 contextBridge.exposeInMainWorld('studioHub', api);

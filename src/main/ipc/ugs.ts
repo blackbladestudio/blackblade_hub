@@ -1,4 +1,4 @@
-import { ipcMain, shell } from 'electron';
+import { ipcMain, shell, BrowserWindow } from 'electron';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
@@ -114,5 +114,70 @@ export function registerUgsHandlers(): void {
       console.log('[UGS] Install error:', errorMsg);
       return { success: false, error: '安装失败: ' + errorMsg, path: null };
     }
+  });
+
+  /**
+   * 通过 UGS 同步 UE 项目到最新 precompiled-binary + content
+   * 在项目目录运行 UnrealGameSync.exe -sync
+   */
+  ipcMain.handle('ugs:sync-project', async (_event, uprojectPath: string) => {
+    const ugsPath = await findUgsPath();
+    if (!ugsPath) {
+      return { success: false, error: '未找到 UGS 安装' };
+    }
+
+    if (!uprojectPath?.trim()) {
+      return { success: false, error: '未配置 UE 项目路径' };
+    }
+
+    // 从 uproject 路径推导项目根目录
+    const projectDir = uprojectPath.trim().endsWith('.uproject')
+      ? path.dirname(uprojectPath.trim())
+      : uprojectPath.trim();
+
+    console.log('[UGS sync] projectDir:', projectDir, 'ugsPath:', ugsPath);
+
+    // 查找主窗口用于发送脚本日志
+    const mainWindow = BrowserWindow.getAllWindows()[0];
+
+    return new Promise((resolve) => {
+      import('child_process').then(({ spawn }) => {
+        const proc = spawn(ugsPath, ['-sync'], {
+          cwd: projectDir,
+          detached: false,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+
+        let stderrData = '';
+        proc.stderr?.on('data', (chunk: Buffer) => {
+          const line = chunk.toString().trim();
+          if (line) {
+            stderrData += line + '\n';
+            mainWindow?.webContents.send('script-log', { type: 'stderr', msg: '[UGS] ' + line });
+          }
+        });
+
+        proc.stdout?.on('data', (chunk: Buffer) => {
+          const line = chunk.toString().trim();
+          if (line) {
+            mainWindow?.webContents.send('script-log', { type: 'stdout', msg: '[UGS] ' + line });
+          }
+        });
+
+        proc.on('close', (code: number | null) => {
+          console.log('[UGS sync] exited with code:', code);
+          if (code === 0) {
+            resolve({ success: true });
+          } else {
+            resolve({ success: false, error: stderrData || `同步失败 (exit code: ${code})` });
+          }
+        });
+
+        proc.on('error', (err: Error) => {
+          console.error('[UGS sync] spawn error:', err);
+          resolve({ success: false, error: err.message });
+        });
+      });
+    });
   });
 }
