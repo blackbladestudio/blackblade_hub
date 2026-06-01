@@ -7,6 +7,7 @@ import { initToolbox, refreshHordeAgentStatus } from './modules/toolbox';
 import { initConfigModal } from './modules/config-modal';
 import { initLogPanel, appendLog } from './modules/log-panel';
 import { initLauncher } from './modules/launcher';
+import { initAiSites, refreshStudioChatUrl } from './modules/ai-sites';
 
 declare global {
   interface Window {
@@ -58,6 +59,7 @@ function renderUI(): void {
   }
 
   refreshStudioPortalCards(config);
+  refreshStudioChatUrl();
 
   refreshHordeAgentStatus();
   refreshUgsStatus();
@@ -75,6 +77,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   initConfigModal(getConfig, setConfigAndRender);
   initLogPanel();
   initLauncher(getConfig);
+  initAiSites(getConfig);
 
   document.getElementById('btn-minimize')!.addEventListener('click', () => window.studioHub.winMinimize());
   document.getElementById('btn-maximize')!.addEventListener('click', () => window.studioHub.winMaximize());

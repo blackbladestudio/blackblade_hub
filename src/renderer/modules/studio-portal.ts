@@ -1,23 +1,20 @@
 import type { AppConfig } from '../../types/config';
 import { toast } from '../utils';
 
-type PortalKey = 'studioHome' | 'studioChat' | 'studioHue';
+type PortalKey = 'studioHome' | 'studioHue';
 
 const CARD_IDS: Record<PortalKey, string> = {
   studioHome: 'card-studio-home',
-  studioChat: 'card-studio-chat',
   studioHue: 'card-studio-hue',
 };
 
 const DOT_IDS: Record<PortalKey, string> = {
   studioHome: 'dot-studio-home',
-  studioChat: 'dot-studio-chat',
   studioHue: 'dot-studio-hue',
 };
 
 const LABELS: Record<PortalKey, string> = {
   studioHome: 'Studio Home',
-  studioChat: 'Studio Chat',
   studioHue: 'Hue',
 };
 
@@ -27,16 +24,16 @@ function getPortalUrl(config: AppConfig, key: PortalKey): string {
 }
 
 export function initStudioPortal(getConfig: () => AppConfig): void {
-  (['studioHome', 'studioChat', 'studioHue'] as PortalKey[]).forEach((key) => {
+  (['studioHome', 'studioHue'] as PortalKey[]).forEach((key) => {
     document.getElementById(CARD_IDS[key])!.addEventListener('click', () =>
       void handlePortalClick(key, getConfig()),
     );
   });
 }
 
-/** 根据配置更新三张卡片的可用状态与状态点 */
+/** 根据配置更新卡片的可用状态与状态点 */
 export function refreshStudioPortalCards(config: AppConfig): void {
-  (['studioHome', 'studioChat', 'studioHue'] as PortalKey[]).forEach((key) => {
+  (['studioHome', 'studioHue'] as PortalKey[]).forEach((key) => {
     const val = getPortalUrl(config, key).trim();
     const card = document.getElementById(CARD_IDS[key]);
     const dot = document.getElementById(DOT_IDS[key]);

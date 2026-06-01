@@ -61,10 +61,10 @@ function createTray(): void {
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 960,
-    height: 680,
-    minWidth: 760,
-    minHeight: 520,
+    width: 1280,
+    height: 800,
+    minWidth: 960,
+    minHeight: 620,
     title: 'BlackBlade Hub',
     backgroundColor: '#080b10',
     frame: false,
@@ -73,10 +73,13 @@ function createWindow(): void {
       preload: path.join(__dirname, '..', 'preload', 'index.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      webviewTag: true,
     },
   });
 
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+
+  mainWindow.webContents.openDevTools();
 
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
