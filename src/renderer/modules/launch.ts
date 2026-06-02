@@ -21,10 +21,21 @@ async function handleUgsSync(getConfig: () => AppConfig): Promise<void> {
     return;
   }
 
+  const editorEl = document.getElementById('launch-editor')!;
+  const syncBtn = document.getElementById('btn-ugs-sync')!;
+  const syncLabel = syncBtn.querySelector('span')!;
+
+  // 进入同步状态
+  editorEl.classList.add('syncing');
+  syncLabel.textContent = '同步中...';
   setStatus('warning', '正在同步项目...');
   toast('开始同步项目，详见下方日志面板');
 
   const result = await window.studioHub.ugsSyncProject(config.uprojectPath);
+
+  // 恢复正常状态
+  editorEl.classList.remove('syncing');
+  syncLabel.textContent = '更新';
 
   if (result.success) {
     toast('项目同步完成！可以启动编辑器');

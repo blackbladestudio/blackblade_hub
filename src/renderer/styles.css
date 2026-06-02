@@ -433,6 +433,38 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
   opacity: 0.35;
   cursor: not-allowed;
 }
+
+/* ── 同步中状态 ── */
+.launch-secondary.syncing {
+  border-color: var(--blue);
+  box-shadow: 0 0 24px rgba(79,163,227,0.25);
+  pointer-events: none;
+  cursor: not-allowed;
+}
+.launch-secondary.syncing .launch-manage svg {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.sync-progress {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 0 0 var(--radius) var(--radius);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.launch-secondary.syncing .sync-progress {
+  opacity: 1;
+}
+.sync-progress-fill {
+  width: 30%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, var(--blue), transparent);
+  animation: indeterminate-slide 1.5s ease-in-out infinite;
+}
+
 .launch-secondary .launch-icon-wrap {
   background: var(--blue-dim);
   border-color: rgba(79,163,227,0.3);

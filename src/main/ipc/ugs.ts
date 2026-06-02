@@ -9,8 +9,6 @@ const execAsync = promisify(exec);
 
 const UGS_DOWNLOAD_URL = 'https://www.unrealengine.com/en-US/unreal-engine/unreal-game-sync';
 const UGS_MSI_URL = 'http://10.248.15.20:13340/api/v1/tools/ugs-msi?action=download';
-const HORDE_URL = 'http://10.248.15.20:13340';
-const HORDE_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1lIjoiQW5vbnltb3VzIiwiaHR0cDovL2VwaWNnYW1lcy5jb20vdWUvaG9yZGUvcm9sZSI6ImFnZW50LXJlZ2lzdHJhdGlvbiIsImlzcyI6Imh0dHA6Ly9lM2FmYzUxNmYyOTU6MTMzNDAvIn0.iBY9Cu0fW4INloKRwQyMhzb0_ZqG8ak6wti0lzUyhis';
 
 function getTempDir(): string {
   return app.getPath('temp');
@@ -136,41 +134,17 @@ export function registerUgsHandlers(): void {
       ? path.dirname(uprojectPath.trim())
       : uprojectPath.trim();
 
-    // ── Step 1: UGS sync — 更新 precompiled binaries ──
+    // ── Step 1: UGS CLI sync — 更新 precompiled binaries（纯命令行，无 GUI） ──
     sendLog('info', '[UGS] 开始更新 precompiled binaries...');
 
-    const ugsResult = await new Promise<SpawnResult>((resolve) => {
-      import('child_process').then(({ spawn }) => {
-        // Start-Process -WindowStyle Hidden -Wait：静默等待 UGS sync 完成
-        const ps = spawn(
-          'powershell',
-          [
-            '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-            '-Command',
-            `Start-Process -FilePath 'C:\\Program Files (x86)\\UnrealGameSync\\UnrealGameSync.exe' -ArgumentList '-sync' -WorkingDirectory '${projectDir.replace(/\\/g, '\\\\')}' -WindowStyle Hidden -Wait -PassThru | Select-Object -ExpandProperty ExitCode`,
-          ],
-          { shell: false, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
-        );
+    const UGS_CLI = 'C:\\Program Files (x86)\\UnrealGameSync\\ugs.exe';
+    if (!fs.existsSync(UGS_CLI)) {
+      sendLog('error', '[UGS] 未找到 ugs.exe CLI 工具');
+      return { success: false, error: '未找到 ugs.exe，请确认 UGS 已安装' };
+    }
 
-        let stderr = '';
-        ps.stdout?.on('data', (c: Buffer) => {
-          const line = c.toString().trim();
-          if (line && !/^\d+$/.test(line)) sendLog('stdout', '[UGS] ' + line);
-        });
-        ps.stderr?.on('data', (c: Buffer) => {
-          const l = c.toString().trim();
-          if (l) { stderr += l + '\n'; sendLog('stderr', '[UGS] ' + l); }
-        });
-        ps.on('close', (code) => {
-          sendLog('info', `[UGS] sync 完成，exit code: ${code}`);
-          resolve({ success: code === 0 || code === null, error: stderr || undefined });
-        });
-        ps.on('error', (e: Error) => {
-          sendLog('error', '[UGS] 启动失败: ' + e.message);
-          resolve({ success: false, error: e.message });
-        });
-      });
-    });
+    const ugsArgs = ['sync', 'latest', '-binaries', '-clobber', '-nogpf'];
+    const ugsResult = await spawnLog(UGS_CLI, ugsArgs, projectDir, sendLog);
 
     if (!ugsResult.success) {
       sendLog('error', `[UGS] precompiled binary 更新失败: ${ugsResult.error}`);
@@ -180,16 +154,21 @@ export function registerUgsHandlers(): void {
     // ── Step 2: p4 sync — 同步 content 到最新 ──
     sendLog('info', '[P4] 开始同步 content...');
 
-    // 先获取 depot 路径
+    // 获取 depot 路径（取 .uproject 所在目录的 depot 路径）
     let depotPath = '//ProjectZion/mainline';
     try {
       const { stdout } = await execAsync(
         `p4 where "${uprojectPath.trim()}"`,
         { cwd: projectDir, timeout: 30000 },
       );
+      // p4 where 输出格式: //depot/path/file.uproject //client/path/file.uproject D:\local\path\file.uproject
       const parts = stdout.trim().split(/\s+/);
-      if (parts[0]) depotPath = parts[0];
-      sendLog('info', `[P4] depot: ${depotPath}`);
+      if (parts[0]) {
+        // 去掉文件名，取目录部分
+        const filePath = parts[0];
+        depotPath = filePath.substring(0, filePath.lastIndexOf('/'));
+      }
+      sendLog('info', `[P4] depot: ${depotPath}/...`);
     } catch (e) {
       sendLog('warn', `[P4] 无法获取 depot 路径，使用默认: ${depotPath}`);
     }
@@ -217,15 +196,20 @@ interface SpawnResult { success: boolean; error?: string }
 function spawnLog(cmd: string, args: string[], cwd: string, sendLog: (type: string, msg: string) => void): Promise<SpawnResult> {
   return new Promise((resolve) => {
     import('child_process').then(({ spawn }) => {
+      // 打印实际执行的命令
+      const cmdDisplay = `"${cmd}" ${args.join(' ')}`;
+      sendLog('info', `[exec] ${cmdDisplay}  (cwd: ${cwd})`);
+
       const proc = spawn(cmd, args, {
         cwd,
-        shell: true,
+        shell: false,
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
       });
 
       let stderrAll = '';
-      const tag = `[${cmd}] `;
+      const label = path.basename(cmd, '.exe');
+      const tag = `[${label}] `;
 
       proc.stdout?.on('data', (chunk: Buffer) => {
         chunk.toString().split('\n').filter(Boolean).forEach(line => sendLog('stdout', tag + line));
