@@ -178,9 +178,8 @@ header {
 .header-logo-mark {
   width: 32px;
   height: 32px;
-  background: linear-gradient(135deg, var(--gold), #a07030);
-  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
   flex-shrink: 0;
+  border-radius: 6px;
 }
 .header-title {
   font-size: 18px;
