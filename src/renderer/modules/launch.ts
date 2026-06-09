@@ -21,6 +21,21 @@ async function handleUgsSync(getConfig: () => AppConfig): Promise<void> {
     return;
   }
 
+  // 检查 UGS 是否已安装，未安装则弹窗提示
+  const ugsStatus = await window.studioHub.ugsCheckInstalled();
+  if (!ugsStatus.installed) {
+    const install = confirm('Unreal Game Sync (UGS) 未安装，无法同步预编译二进制。\n\n是否下载并安装？');
+    if (install) {
+      const installResult = await window.studioHub.ugsDownloadAndInstall();
+      if (installResult.success) {
+        toast('UGS 安装已启动，安装完成后请重新点击更新');
+      } else {
+        toast('安装失败: ' + (installResult.error || '未知错误'));
+      }
+    }
+    return;
+  }
+
   const editorEl = document.getElementById('launch-editor')!;
   const syncBtn = document.getElementById('btn-ugs-sync')!;
   const syncLabel = syncBtn.querySelector('span')!;
