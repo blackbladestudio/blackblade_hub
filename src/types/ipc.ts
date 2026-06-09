@@ -41,6 +41,32 @@ export interface ScriptLogMessage {
   msg: string;
 }
 
+export interface P4WorkspaceInfo {
+  name: string;
+  host: string;
+  root: string;
+}
+
+export interface P4ListWorkspacesParams {
+  server: string;
+  userName: string;
+  uprojectPath: string;
+}
+
+export interface P4ListWorkspacesResult {
+  success: boolean;
+  error?: string;
+  localHost?: string;
+  totalCount?: number;
+  workspaces?: P4WorkspaceInfo[];
+}
+
+export interface P4AutoFillResult {
+  server?: string;
+  userName?: string;
+  workspace?: string;
+}
+
 export interface StudioHubAPI {
   getConfig(): Promise<AppConfig>;
   saveConfig(config: AppConfig): Promise<boolean>;
@@ -99,4 +125,6 @@ export interface StudioHubAPI {
   ugsOpenDownload(): Promise<void>;
   ugsDownloadAndInstall(): Promise<LaunchResult>;
   ugsSyncProject(uprojectPath: string): Promise<LaunchResult>;
+  ugsListWorkspaces(params: P4ListWorkspacesParams): Promise<P4ListWorkspacesResult>;
+  p4AutoFill(uprojectPath: string): Promise<P4AutoFillResult>;
 }

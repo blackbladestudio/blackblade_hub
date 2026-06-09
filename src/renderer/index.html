@@ -602,6 +602,26 @@
           <button class="cfg-browse" id="btn-browse-uproject">浏览</button>
         </div>
       </div>
+
+      <div class="cfg-row">
+        <label>P4 Server</label>
+        <input class="cfg-input" id="cfg-p4-server" type="text" placeholder="10.248.15.25:1666" />
+      </div>
+
+      <div class="cfg-row">
+        <label>P4 User Name</label>
+        <input class="cfg-input" id="cfg-p4-username" type="text" placeholder="Perforce 用户名" />
+      </div>
+
+      <div class="cfg-row">
+        <label>P4 Workspace</label>
+        <div class="cfg-p4-workspace-wrap">
+          <select class="cfg-input cfg-select" id="cfg-p4-workspace" disabled>
+            <option value="">请先填写 Server、User Name 和 UE 项目</option>
+          </select>
+          <div class="cfg-hint" id="cfg-p4-workspace-hint"></div>
+        </div>
+      </div>
     </div>
 
     <!-- Production Tools -->

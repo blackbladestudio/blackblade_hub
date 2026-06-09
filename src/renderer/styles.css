@@ -901,6 +901,24 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
   transition: border-color 0.15s;
 }
 .cfg-input:focus { border-color: var(--blue); }
+.cfg-select {
+  width: 100%;
+  cursor: pointer;
+}
+.cfg-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.cfg-p4-workspace-wrap {
+  flex: 1;
+  min-width: 0;
+}
+.cfg-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+}
 .cfg-browse {
   background: transparent;
   border: 1px solid var(--border);

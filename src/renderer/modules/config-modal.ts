@@ -1,8 +1,11 @@
 import type { AppConfig, ToolEntry } from '../../types/config';
+import { DEFAULT_P4_SERVER } from '../../types/config';
 import { toast, escHtml } from '../utils';
 
 let onConfigSaved: ((config: AppConfig) => void) | null = null;
 let getConfigRef: (() => AppConfig) | null = null;
+let p4RefreshTimer: ReturnType<typeof setTimeout> | null = null;
+let savedP4Workspace = '';
 
 export function initConfigModal(
   getConfig: () => AppConfig,
@@ -24,7 +27,10 @@ export function initConfigModal(
   document.getElementById('btn-browse-uproject')!.addEventListener('click', async () => {
     const input = document.getElementById('cfg-uproject') as HTMLInputElement;
     const result = await window.studioHub.selectUproject();
-    if (result) input.value = result;
+    if (result) {
+      input.value = result;
+      scheduleP4WorkspaceRefresh();
+    }
   });
   document.getElementById('btn-browse-env')!.addEventListener('click', () => browseFile('cfg-env'));
 
@@ -40,11 +46,97 @@ export function initConfigModal(
     const isHidden = input.type === 'password';
     input.type = isHidden ? 'text' : 'password';
   });
+
+  for (const id of ['cfg-p4-server', 'cfg-p4-username', 'cfg-uproject']) {
+    document.getElementById(id)!.addEventListener('input', scheduleP4WorkspaceRefresh);
+  }
 }
 
-function openConfig(): void {
-  const config = getConfigRef!();
+function scheduleP4WorkspaceRefresh(): void {
+  if (p4RefreshTimer) clearTimeout(p4RefreshTimer);
+  p4RefreshTimer = setTimeout(() => void refreshP4Workspaces(), 400);
+}
+
+async function refreshP4Workspaces(): Promise<void> {
+  const select = document.getElementById('cfg-p4-workspace') as HTMLSelectElement;
+  const hint = document.getElementById('cfg-p4-workspace-hint')!;
+  const server = (document.getElementById('cfg-p4-server') as HTMLInputElement).value.trim() || DEFAULT_P4_SERVER;
+  const userName = (document.getElementById('cfg-p4-username') as HTMLInputElement).value.trim();
+  const uprojectPath = (document.getElementById('cfg-uproject') as HTMLInputElement).value.trim();
+
+  if (!userName || !uprojectPath) {
+    select.innerHTML = '<option value="">请先填写 User Name 和 UE 项目</option>';
+    select.disabled = true;
+    hint.textContent = '';
+    return;
+  }
+
+  // 如果下拉框已有可选项，不清空，等结果回来再更新，避免闪烁
+  const hasExistingOptions = select.options.length > 0 && select.options[0].value !== '';
+
+  if (!hasExistingOptions) {
+    select.disabled = true;
+    select.innerHTML = '<option value="">检测中...</option>';
+    hint.textContent = '';
+  }
+
+  const result = await window.studioHub.ugsListWorkspaces({ server, userName, uprojectPath });
+
+  if (!result.success) {
+    select.innerHTML = `<option value="">${escHtml(result.error || '检测失败')}</option>`;
+    select.disabled = true;
+    hint.textContent = '';
+    return;
+  }
+
+  const workspaces = result.workspaces ?? [];
+  if (workspaces.length === 0) {
+    select.innerHTML = '<option value="">No Workspaces found!</option>';
+    select.disabled = true;
+    hint.textContent = `本机 ${result.localHost}，服务器共 ${result.totalCount} 个，过滤后 0 个`;
+    return;
+  }
+
+  select.innerHTML = '';
+  for (const ws of workspaces) {
+    const opt = document.createElement('option');
+    opt.value = ws.name;
+    opt.textContent = ws.name;
+    opt.title = `Host: ${ws.host || '(any)'} | Root: ${ws.root || 'null'}`;
+    select.appendChild(opt);
+  }
+
+  const preferred = savedP4Workspace || select.value;
+  if (preferred && workspaces.some((ws) => ws.name === preferred)) {
+    select.value = preferred;
+  } else if (workspaces.length === 1) {
+    select.value = workspaces[0].name;
+  }
+
+  select.disabled = false;
+  hint.textContent = `本机 ${result.localHost}，过滤后 ${workspaces.length} / ${result.totalCount} 个`;
+}
+
+// 将当前配置预填到表单，避免打开配置面板时从空到填充的闪烁
+export function prefillConfigForm(config: AppConfig): void {
   (document.getElementById('cfg-uproject') as HTMLInputElement).value = config.uprojectPath || '';
+  const p4 = config.perforce || { server: DEFAULT_P4_SERVER, userName: '', workspace: '' };
+  (document.getElementById('cfg-p4-server') as HTMLInputElement).value = p4.server || DEFAULT_P4_SERVER;
+  (document.getElementById('cfg-p4-username') as HTMLInputElement).value = p4.userName || '';
+  savedP4Workspace = p4.workspace || '';
+
+  // workspace 下拉框：如果有保存的 workspace，先放一个选项占位
+  if (p4.workspace) {
+    const select = document.getElementById('cfg-p4-workspace') as HTMLSelectElement;
+    select.innerHTML = '';
+    const opt = document.createElement('option');
+    opt.value = p4.workspace;
+    opt.textContent = p4.workspace;
+    select.appendChild(opt);
+    select.value = p4.workspace;
+    select.disabled = false;
+  }
+
   (document.getElementById('cfg-jenkins') as HTMLInputElement).value = config.jenkins || '';
   (document.getElementById('cfg-horde') as HTMLInputElement).value = config.horde || '';
   (document.getElementById('cfg-studio-home') as HTMLInputElement).value = config.studioHome || '';
@@ -62,12 +154,34 @@ function openConfig(): void {
   (document.getElementById('cfg-launcher-prefix') as HTMLInputElement).value = launcher.prefix || '';
   (document.getElementById('cfg-launcher-exe') as HTMLInputElement).value = launcher.exeRelativePath || '';
   (document.getElementById('cfg-launcher-install-dir') as HTMLInputElement).value = launcher.installDir || '';
+}
+
+async function openConfig(): Promise<void> {
+  // 表单已在 prefillConfigForm 中预填，直接显示面板
+  const config = getConfigRef!();
+  const p4 = config.perforce || { server: DEFAULT_P4_SERVER, userName: '', workspace: '' };
+
+  // userName 或 workspace 为空时，从项目 SourceControlSettings.ini 自动填充
+  if (config.uprojectPath?.trim() && (!p4.userName || !p4.workspace)) {
+    const autoFill = await window.studioHub.p4AutoFill(config.uprojectPath);
+    if (autoFill.userName && !p4.userName) {
+      (document.getElementById('cfg-p4-username') as HTMLInputElement).value = autoFill.userName;
+    }
+    if (autoFill.server && p4.server === DEFAULT_P4_SERVER && autoFill.server !== DEFAULT_P4_SERVER) {
+      (document.getElementById('cfg-p4-server') as HTMLInputElement).value = autoFill.server;
+    }
+    if (autoFill.workspace && !p4.workspace) {
+      savedP4Workspace = autoFill.workspace;
+    }
+  }
 
   renderToolsEditor(config);
   document.getElementById('config-overlay')!.classList.add('visible');
+  scheduleP4WorkspaceRefresh();
 }
 
 function closeConfig(): void {
+  persistConfig();
   document.getElementById('config-overlay')!.classList.remove('visible');
 }
 
@@ -116,7 +230,7 @@ async function browseFile(inputId: string): Promise<void> {
   if (result) input.value = result;
 }
 
-async function saveConfig(): Promise<void> {
+async function persistConfig(): Promise<AppConfig> {
   const toolEntries = Array.from(document.getElementById('cfg-tools-list')!.children);
   const tools: ToolEntry[] = toolEntries
     .map((entry) => ({
@@ -129,6 +243,11 @@ async function saveConfig(): Promise<void> {
   const newCfg: AppConfig = {
     ...prev,
     uprojectPath: (document.getElementById('cfg-uproject') as HTMLInputElement).value.trim(),
+    perforce: {
+      server: (document.getElementById('cfg-p4-server') as HTMLInputElement).value.trim() || DEFAULT_P4_SERVER,
+      userName: (document.getElementById('cfg-p4-username') as HTMLInputElement).value.trim(),
+      workspace: (document.getElementById('cfg-p4-workspace') as HTMLSelectElement).value.trim(),
+    },
     tools,
     jenkins: (document.getElementById('cfg-jenkins') as HTMLInputElement).value.trim(),
     horde: (document.getElementById('cfg-horde') as HTMLInputElement).value.trim(),
@@ -152,6 +271,11 @@ async function saveConfig(): Promise<void> {
 
   await window.studioHub.saveConfig(newCfg);
   onConfigSaved?.(newCfg);
+  return newCfg;
+}
+
+async function saveConfig(): Promise<void> {
+  await persistConfig();
   closeConfig();
   toast('配置已保存');
 }

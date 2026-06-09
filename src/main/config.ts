@@ -62,6 +62,7 @@ export function loadConfig(): AppConfig {
       const merged = { ...DEFAULT_CONFIG, ...defaultCfg, ...userCfg };
       merged.minio = { ...DEFAULT_CONFIG.minio, ...(defaultCfg as any).minio, ...userCfg.minio };
       merged.launcher = { ...DEFAULT_CONFIG.launcher, ...(defaultCfg as any).launcher, ...userCfg.launcher };
+      merged.perforce = { ...DEFAULT_CONFIG.perforce, ...(defaultCfg as any).perforce, ...userCfg.perforce };
       return merged;
     }
   } catch {
@@ -71,6 +72,7 @@ export function loadConfig(): AppConfig {
   const base = { ...DEFAULT_CONFIG, ...defaultCfg };
   base.minio = { ...DEFAULT_CONFIG.minio, ...(defaultCfg as any).minio };
   base.launcher = { ...DEFAULT_CONFIG.launcher, ...(defaultCfg as any).launcher };
+  base.perforce = { ...DEFAULT_CONFIG.perforce, ...(defaultCfg as any).perforce };
   return base;
 }
 

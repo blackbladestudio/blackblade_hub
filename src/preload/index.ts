@@ -58,6 +58,8 @@ const api: StudioHubAPI = {
   ugsOpenDownload: () => ipcRenderer.invoke('ugs:open-download'),
   ugsDownloadAndInstall: () => ipcRenderer.invoke('ugs:download-and-install'),
   ugsSyncProject: (uprojectPath: string) => ipcRenderer.invoke('ugs:sync-project', uprojectPath),
+  ugsListWorkspaces: (params) => ipcRenderer.invoke('ugs:list-workspaces', params),
+  p4AutoFill: (uprojectPath) => ipcRenderer.invoke('p4:auto-fill', uprojectPath),
 };
 
 contextBridge.exposeInMainWorld('studioHub', api);

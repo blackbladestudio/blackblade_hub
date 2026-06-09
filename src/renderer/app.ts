@@ -4,7 +4,7 @@ import { initLaunch, renderToolsColumn } from './modules/launch';
 import { initPipeline, refreshUgsStatus } from './modules/pipeline';
 import { initStudioPortal, refreshStudioPortalCards } from './modules/studio-portal';
 import { initToolbox, refreshHordeAgentStatus } from './modules/toolbox';
-import { initConfigModal } from './modules/config-modal';
+import { initConfigModal, prefillConfigForm } from './modules/config-modal';
 import { initLogPanel, appendLog } from './modules/log-panel';
 import { initLauncher } from './modules/launcher';
 import { initAiSites, refreshStudioChatUrl } from './modules/ai-sites';
@@ -17,6 +17,7 @@ declare global {
 
 let config: AppConfig = {
   uprojectPath: '',
+  perforce: { server: '10.248.15.25:1666', userName: '', workspace: '' },
   tools: [],
   jenkins: '',
   horde: '',
@@ -39,6 +40,7 @@ function setConfigAndRender(newConfig: AppConfig): void {
 
 async function loadAppConfig(): Promise<void> {
   config = await window.studioHub.getConfig();
+  prefillConfigForm(config);
   renderUI();
 }
 

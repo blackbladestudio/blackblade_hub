@@ -1,11 +1,22 @@
 import { ipcMain, shell, BrowserWindow } from 'electron';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
+import { loadConfig } from '../config';
+import { DEFAULT_P4_SERVER } from '../../types/config';
+import type { PerforceConfig } from '../../types/config';
+import type { P4ListWorkspacesParams } from '../../types/ipc';
+import {
+  buildP4EnvForSync,
+  listFilteredWorkspaces,
+  readSourceControlSettings,
+  resolveProjectDir,
+} from '../p4-workspace';
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 interface P4Settings {
   port: string;
@@ -60,76 +71,74 @@ async function findUgsPath(): Promise<string | null> {
   return null;
 }
 
-const P4_CONFIG_SUBDIRS = ['WindowsEditor', 'Windows', 'LinuxEditor', 'MacEditor'];
-
-function findSourceControlSettingsIni(projectDir: string): string | null {
-  const configDir = path.join(projectDir, 'Saved', 'Config');
-  if (!fs.existsSync(configDir)) return null;
-
-  for (const subdir of P4_CONFIG_SUBDIRS) {
-    const iniPath = path.join(configDir, subdir, 'SourceControlSettings.ini');
-    if (fs.existsSync(iniPath)) return iniPath;
+async function resolveP4Workspace(
+  p4Config: PerforceConfig,
+  projectDir: string,
+  sendLog: (type: string, msg: string) => void,
+): Promise<P4Settings> {
+  const port = p4Config.server?.trim() || DEFAULT_P4_SERVER;
+  const userName = p4Config.userName?.trim();
+  if (!userName) {
+    throw new Error('未配置 P4 User Name');
   }
 
-  for (const entry of fs.readdirSync(configDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const iniPath = path.join(configDir, entry.name, 'SourceControlSettings.ini');
-    if (fs.existsSync(iniPath)) return iniPath;
+  const configuredWorkspace = p4Config.workspace?.trim();
+  if (configuredWorkspace) {
+    sendLog('info', `[P4] 使用配置的工作区: ${configuredWorkspace}`);
+    return { port, userName, workspace: configuredWorkspace };
   }
 
-  return null;
-}
+  sendLog('info', `[P4] 自动检测工作区 (${port} | ${userName})`);
+  const { localHost, totalCount, workspaces } = await listFilteredWorkspaces(port, userName, projectDir);
+  sendLog('info', `[P4] 本机 ${localHost}，服务器 ${totalCount} 个，过滤后 ${workspaces.length} 个`);
 
-function parseIniSections(content: string): Record<string, Record<string, string>> {
-  const sections: Record<string, Record<string, string>> = {};
-  let current = '';
-
-  for (const line of content.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith(';') || trimmed.startsWith('#')) continue;
-
-    const sectionMatch = trimmed.match(/^\[(.+)\]$/);
-    if (sectionMatch) {
-      current = sectionMatch[1];
-      sections[current] ??= {};
-      continue;
-    }
-
-    const eqIdx = trimmed.indexOf('=');
-    if (eqIdx > 0 && current) {
-      sections[current][trimmed.slice(0, eqIdx).trim()] = trimmed.slice(eqIdx + 1).trim();
-    }
+  if (workspaces.length === 0) {
+    throw new Error('未找到可用工作区（Host 或 Root 不匹配），请在配置中选择 P4 Workspace');
+  }
+  if (workspaces.length > 1) {
+    const names = workspaces.map((c) => c.name).join(', ');
+    throw new Error(`找到多个可用工作区 (${names})，请在配置中选择 P4 Workspace`);
   }
 
-  return sections;
-}
-
-function readP4SettingsFromProject(projectDir: string): { settings: P4Settings; iniPath: string } | null {
-  const iniPath = findSourceControlSettingsIni(projectDir);
-  if (!iniPath) return null;
-
-  const sections = parseIniSections(fs.readFileSync(iniPath, 'utf-8'));
-  const p4Section = sections['PerforceSourceControl.PerforceSourceControlSettings'] ?? {};
-
-  const port = p4Section.Port ?? '';
-  const userName = p4Section.UserName ?? '';
-  const workspace = p4Section.Workspace ?? p4Section.WorkspaceName ?? '';
-
-  if (!port || !userName || !workspace) return null;
-
-  return { settings: { port, userName, workspace }, iniPath };
-}
-
-function buildP4Env(settings: P4Settings): NodeJS.ProcessEnv {
-  return {
-    ...process.env,
-    P4PORT: settings.port,
-    P4USER: settings.userName,
-    P4CLIENT: settings.workspace,
-  };
+  sendLog('info', `[P4] 自动选中工作区: ${workspaces[0].name}`);
+  return { port, userName, workspace: workspaces[0].name };
 }
 
 export function registerUgsHandlers(): void {
+  ipcMain.handle('ugs:list-workspaces', async (_event, params: P4ListWorkspacesParams) => {
+    try {
+      if (!params.uprojectPath?.trim()) {
+        return { success: false, error: '未配置 UE 项目路径' };
+      }
+      if (!params.userName?.trim()) {
+        return { success: false, error: '未填写 P4 User Name' };
+      }
+
+      const projectDir = resolveProjectDir(params.uprojectPath);
+      const { localHost, totalCount, workspaces } = await listFilteredWorkspaces(
+        params.server,
+        params.userName,
+        projectDir,
+      );
+
+      return {
+        success: true,
+        localHost,
+        totalCount,
+        workspaces,
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { success: false, error: msg };
+    }
+  });
+
+  ipcMain.handle('p4:auto-fill', async (_event, uprojectPath: string) => {
+    if (!uprojectPath?.trim()) return {};
+    const projectDir = resolveProjectDir(uprojectPath.trim());
+    return readSourceControlSettings(projectDir);
+  });
+
   ipcMain.handle('ugs:check-installed', async () => {
     console.log('[UGS] ugs:check-installed starting');
     const ugsPath = await findUgsPath();
@@ -229,28 +238,33 @@ export function registerUgsHandlers(): void {
     // ── Step 2: p4 sync — 同步 content 到最新 ──
     sendLog('info', '[P4] 开始同步 content...');
 
-    const p4Config = readP4SettingsFromProject(projectDir);
-    if (!p4Config) {
-      const expected = path.join(projectDir, 'Saved', 'Config', '*', 'SourceControlSettings.ini');
-      sendLog('error', `[P4] 未找到或无法解析 SourceControlSettings.ini (${expected})`);
-      return {
-        success: false,
-        error: '未找到项目 Perforce 配置，请先在 UE 编辑器中连接 Source Control',
-      };
+    const appConfig = loadConfig();
+    let p4Settings: P4Settings;
+    try {
+      p4Settings = await resolveP4Workspace(appConfig.perforce, projectDir, sendLog);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      sendLog('error', `[P4] ${msg}`);
+      return { success: false, error: msg };
     }
 
-    const { settings: p4Settings, iniPath: p4IniPath } = p4Config;
-    const p4Env = buildP4Env(p4Settings);
-    sendLog('info', `[P4] 配置来源: ${p4IniPath}`);
+    const p4Env = buildP4EnvForSync(p4Settings.port, p4Settings.userName, p4Settings.workspace);
     sendLog('info', `[P4] ${p4Settings.port} | ${p4Settings.userName} | ${p4Settings.workspace}`);
 
     // 获取 depot 路径（取 .uproject 所在目录的 depot 路径）
     let depotPath: string;
     try {
-      const { stdout } = await execAsync(
-        `p4 where "${uprojectPath.trim()}"`,
-        { cwd: projectDir, timeout: 30000, env: p4Env },
-      );
+      let uprojectFile = uprojectPath.trim();
+      if (!uprojectFile.endsWith('.uproject')) {
+        const found = fs.readdirSync(projectDir).find((f) => f.endsWith('.uproject'));
+        if (!found) throw new Error('未找到 .uproject 文件');
+        uprojectFile = path.join(projectDir, found);
+      }
+      const { stdout } = await execFileAsync('p4', ['where', uprojectFile], {
+        cwd: projectDir,
+        timeout: 30000,
+        env: p4Env,
+      });
       // p4 where 输出格式: //depot/path/file.uproject //client/path/file.uproject D:\local\path\file.uproject
       const parts = stdout.trim().split(/\s+/);
       if (!parts[0]) {
@@ -317,7 +331,9 @@ function spawnLog(
         const line = chunk.toString().trim();
         if (line) {
           stderrAll += line + '\n';
-          sendLog('stderr', tag + line);
+          // p4 把正常状态信息（up-to-date、updating）也输出到 stderr，按内容判断类型
+          const isP4Info = label === 'p4' && /^(\/\/|file\(s\)|\d+ file)/.test(line);
+          sendLog(isP4Info ? 'stdout' : 'stderr', tag + line);
         }
       });
       proc.on('close', (code: number | null) => {
