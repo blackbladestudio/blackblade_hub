@@ -139,9 +139,6 @@ export function prefillConfigForm(config: AppConfig): void {
 
   (document.getElementById('cfg-jenkins') as HTMLInputElement).value = config.jenkins || '';
   (document.getElementById('cfg-horde') as HTMLInputElement).value = config.horde || '';
-  (document.getElementById('cfg-studio-home') as HTMLInputElement).value = config.studioHome || '';
-  (document.getElementById('cfg-studio-chat') as HTMLInputElement).value = config.studioChat || '';
-  (document.getElementById('cfg-studio-hue') as HTMLInputElement).value = config.studioHue || '';
   (document.getElementById('cfg-env') as HTMLInputElement).value = config.envScript || '';
 
   const minio = config.minio || { endpoint: '', accessKey: '', secretKey: '', bucket: '', maxWorkers: undefined };
@@ -251,9 +248,6 @@ async function persistConfig(): Promise<AppConfig> {
     tools,
     jenkins: (document.getElementById('cfg-jenkins') as HTMLInputElement).value.trim(),
     horde: (document.getElementById('cfg-horde') as HTMLInputElement).value.trim(),
-    studioHome: (document.getElementById('cfg-studio-home') as HTMLInputElement).value.trim(),
-    studioChat: (document.getElementById('cfg-studio-chat') as HTMLInputElement).value.trim(),
-    studioHue: (document.getElementById('cfg-studio-hue') as HTMLInputElement).value.trim(),
     envScript: (document.getElementById('cfg-env') as HTMLInputElement).value.trim(),
     minio: {
       endpoint: (document.getElementById('cfg-minio-endpoint') as HTMLInputElement).value.trim(),

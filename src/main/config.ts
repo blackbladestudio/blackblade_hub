@@ -5,6 +5,9 @@ import { DEFAULT_CONFIG } from '../types/config';
 
 const APP_NAME = 'BlackBlade Hub';
 
+/** 应用级字段，不写入用户配置文件 */
+const APP_ONLY_KEYS: (keyof AppConfig)[] = ['studioHome', 'studioChat', 'studioHue'];
+
 let configPath = '';
 
 function getDefaultConfigPath(): string {
@@ -34,6 +37,8 @@ export function bootstrapConfig(): void {
       try {
         const raw = fs.readFileSync(defaultPath, 'utf-8');
         const defaultCfg = JSON.parse(raw);
+        // 初始化用户配置时剔除应用级字段
+        for (const key of APP_ONLY_KEYS) delete defaultCfg[key];
         fs.writeFileSync(configPath, JSON.stringify(defaultCfg, null, 2), 'utf-8');
         return;
       } catch {
@@ -63,6 +68,10 @@ export function loadConfig(): AppConfig {
       merged.minio = { ...DEFAULT_CONFIG.minio, ...(defaultCfg as any).minio, ...userCfg.minio };
       merged.launcher = { ...DEFAULT_CONFIG.launcher, ...(defaultCfg as any).launcher, ...userCfg.launcher };
       merged.perforce = { ...DEFAULT_CONFIG.perforce, ...(defaultCfg as any).perforce, ...userCfg.perforce };
+      // 门户地址为应用级配置，始终使用 config.default.json 的值，不允许用户覆盖
+      if ((defaultCfg as any).studioHome) merged.studioHome = (defaultCfg as any).studioHome;
+      if ((defaultCfg as any).studioChat) merged.studioChat = (defaultCfg as any).studioChat;
+      if ((defaultCfg as any).studioHue) merged.studioHue = (defaultCfg as any).studioHue;
       return merged;
     }
   } catch {
@@ -78,7 +87,9 @@ export function loadConfig(): AppConfig {
 
 export function saveConfig(data: AppConfig): void {
   try {
-    fs.writeFileSync(configPath, JSON.stringify(data, null, 2), 'utf-8');
+    const stripped: Record<string, unknown> = { ...data };
+    for (const key of APP_ONLY_KEYS) delete stripped[key];
+    fs.writeFileSync(configPath, JSON.stringify(stripped, null, 2), 'utf-8');
   } catch {
     // ignore
   }
