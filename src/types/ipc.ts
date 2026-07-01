@@ -90,6 +90,8 @@ export interface StudioHubAPI {
   // Launcher
   launcherGetManifest(): Promise<{ data: LauncherManifest | null; error?: string }>;
   launcherGetState(): Promise<LauncherState>;
+  launcherGetDefaultVariant(): Promise<GameVariant | null>;
+  launcherSetDefaultVariant(variant: GameVariant | null): Promise<{ success: boolean; error?: string }>;
   launcherInstall(variant: GameVariant, objectKey?: string): Promise<LaunchResult>;
   launcherLaunch(variant: GameVariant): Promise<LaunchResult>;
   launcherUninstall(variant: GameVariant): Promise<LaunchResult>;

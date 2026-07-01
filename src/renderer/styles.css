@@ -1298,6 +1298,10 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 }
 .launcher-tab {
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 10px 16px;
   background: transparent;
   border: none;
@@ -1317,6 +1321,22 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 .launcher-tab.active {
   color: var(--gold);
   background: var(--gold-dim);
+}
+.launcher-tab-star {
+  font-size: 15px;
+  line-height: 1;
+  color: var(--muted);
+  opacity: 0.6;
+  transition: color 0.15s, opacity 0.15s, transform 0.1s;
+}
+.launcher-tab-star:hover {
+  opacity: 1;
+  transform: scale(1.2);
+}
+/* 已设为默认的包体：实心金色星标 */
+.launcher-tab.is-default .launcher-tab-star {
+  color: var(--gold);
+  opacity: 1;
 }
 
 /* Build Info */

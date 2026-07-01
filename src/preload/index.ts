@@ -28,6 +28,8 @@ const api: StudioHubAPI = {
   // Launcher
   launcherGetManifest: () => ipcRenderer.invoke('launcher:get-manifest'),
   launcherGetState: () => ipcRenderer.invoke('launcher:get-state'),
+  launcherGetDefaultVariant: () => ipcRenderer.invoke('launcher:get-default-variant'),
+  launcherSetDefaultVariant: (variant) => ipcRenderer.invoke('launcher:set-default-variant', variant),
   launcherInstall: (variant, objectKey) => ipcRenderer.invoke('launcher:install', variant, objectKey),
   launcherLaunch: (variant) => ipcRenderer.invoke('launcher:launch', variant),
   launcherUninstall: (variant) => ipcRenderer.invoke('launcher:uninstall', variant),

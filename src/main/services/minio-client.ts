@@ -6,7 +6,7 @@ import type { Readable } from 'stream';
 let client: MinioClient | null = null;
 let activeEndpoint = '';
 
-const KNOWN_VARIANTS: Set<string> = new Set(['Shipping', 'Development', 'Testing']);
+const KNOWN_VARIANTS: Set<string> = new Set(['Shipping', 'Development', 'Test']);
 
 export function ensureClient(config: MinioConfig): MinioClient {
   if (client && activeEndpoint === config.endpoint) return client;

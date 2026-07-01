@@ -44,6 +44,11 @@ export function loadState(): LauncherState {
       dirty = true;
     }
   }
+  // If the default variant is no longer installed, clear the stale default.
+  if (state.defaultVariant && !state.installed[state.defaultVariant]) {
+    delete state.defaultVariant;
+    dirty = true;
+  }
   if (dirty) saveState(state);
 
   return state;
@@ -677,6 +682,39 @@ export function uninstallBuild(variant: GameVariant): void {
     fs.rmSync(installed.installDir, { recursive: true, force: true });
   }
   delete state.installed[variant];
+  // 若卸载的是默认包体，清除默认设置
+  if (state.defaultVariant === variant) {
+    delete state.defaultVariant;
+  }
+  saveState(state);
+}
+
+/**
+ * 返回主界面「启动游戏」应默认启动的包体。
+ * 优先返回显式设置且仍已安装的 defaultVariant，否则回退到第一个已安装的包体。
+ */
+export function resolveDefaultVariant(state: LauncherState): GameVariant | null {
+  if (state.defaultVariant && state.installed[state.defaultVariant]) {
+    return state.defaultVariant;
+  }
+  return GAME_VARIANTS.find((v) => state.installed[v]) ?? null;
+}
+
+export function getDefaultVariant(): GameVariant | null {
+  return resolveDefaultVariant(loadState());
+}
+
+/** 设置默认启动包体；变体必须已安装。传 null 清除设置。 */
+export function setDefaultVariant(variant: GameVariant | null): void {
+  const state = loadState();
+  if (variant === null) {
+    delete state.defaultVariant;
+  } else {
+    if (!state.installed[variant]) {
+      throw new Error(`包体未安装，无法设为默认: ${variant}`);
+    }
+    state.defaultVariant = variant;
+  }
   saveState(state);
 }
 

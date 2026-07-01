@@ -1,6 +1,6 @@
-export type GameVariant = 'Shipping' | 'Development' | 'Testing';
+export type GameVariant = 'Shipping' | 'Development' | 'Test';
 
-export const GAME_VARIANTS: GameVariant[] = ['Shipping', 'Development', 'Testing'];
+export const GAME_VARIANTS: GameVariant[] = ['Shipping', 'Development', 'Test'];
 
 export interface BuildInfo {
   version: string;
@@ -39,6 +39,8 @@ export interface InstalledBuild {
 export interface LauncherState {
   installBaseDir: string;
   installed: Partial<Record<GameVariant, InstalledBuild>>;
+  /** 主界面「启动游戏」默认启动的包体；未设置时回退到第一个已安装的包体 */
+  defaultVariant?: GameVariant;
 }
 
 export interface DownloadProgress {

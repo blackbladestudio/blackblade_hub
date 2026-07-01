@@ -39,6 +39,19 @@ export function registerLauncherHandlers(getMainWindow: () => BrowserWindow | nu
     return gameManager.loadState();
   });
 
+  ipcMain.handle('launcher:get-default-variant', () => {
+    return gameManager.getDefaultVariant();
+  });
+
+  ipcMain.handle('launcher:set-default-variant', (_event, variant: GameVariant | null) => {
+    try {
+      gameManager.setDefaultVariant(variant);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   ipcMain.handle('launcher:install', async (_event, variant: GameVariant, objectKey?: string) => {
     try {
       const config = loadConfig();

@@ -306,9 +306,18 @@
   <div class="launcher-content">
     <!-- Variant Tabs -->
     <div class="launcher-tabs" id="launcher-tabs">
-      <button class="launcher-tab active" data-variant="Development">Development</button>
-      <button class="launcher-tab" data-variant="Testing">Testing</button>
-      <button class="launcher-tab" data-variant="Shipping">Shipping</button>
+      <button class="launcher-tab active" data-variant="Development">
+        <span class="launcher-tab-label">Development</span>
+        <span class="launcher-tab-star" title="设为默认启动" style="display:none">☆</span>
+      </button>
+      <button class="launcher-tab" data-variant="Test">
+        <span class="launcher-tab-label">Test</span>
+        <span class="launcher-tab-star" title="设为默认启动" style="display:none">☆</span>
+      </button>
+      <button class="launcher-tab" data-variant="Shipping">
+        <span class="launcher-tab-label">Shipping</span>
+        <span class="launcher-tab-star" title="设为默认启动" style="display:none">☆</span>
+      </button>
     </div>
 
     <!-- Build Info -->
@@ -402,6 +411,7 @@
       <div class="launcher-more-wrap" id="launcher-more-wrap" style="display:none">
         <button class="launcher-btn-more" id="launcher-btn-more" title="更多操作">⋮</button>
         <div class="launcher-dropdown" id="launcher-dropdown">
+          <button class="launcher-dropdown-item" id="launcher-btn-set-default">⭐ 设为默认启动</button>
           <button class="launcher-dropdown-item" id="launcher-btn-check-update">检测更新</button>
           <button class="launcher-dropdown-item" id="launcher-btn-open-dir">打开目录</button>
           <div class="launcher-dropdown-divider"></div>

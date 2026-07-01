@@ -17,11 +17,12 @@ let isInstalling = false;
 let getConfigRef: (() => AppConfig) | null = null;
 let runningVariants: Set<GameVariant> = new Set();
 let selectedBuildKeys: Partial<Record<GameVariant, string>> = {};
+let defaultVariant: GameVariant | null = null;
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 let mainPollInterval: ReturnType<typeof setInterval> | null = null;
 
 async function pollRunningStatus(): Promise<void> {
-  const variants: GameVariant[] = ['Development', 'Testing', 'Shipping'];
+  const variants: GameVariant[] = ['Development', 'Test', 'Shipping'];
   for (const v of variants) {
     const isRunning = await window.studioHub.launcherCheckRunning(v);
     if (isRunning) {
@@ -62,8 +63,15 @@ export function initLauncher(getConfig: () => AppConfig): void {
   );
 
   document.querySelectorAll('#launcher-tabs .launcher-tab').forEach((tab) => {
+    const variant = tab.getAttribute('data-variant') as GameVariant;
     tab.addEventListener('click', () => {
-      selectVariant(tab.getAttribute('data-variant') as GameVariant);
+      selectVariant(variant);
+    });
+    // 星标点击：切换默认包体，阻止冒泡以免触发 tab 切换
+    const star = tab.querySelector('.launcher-tab-star');
+    star?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleDefaultVariant(variant);
     });
   });
 
@@ -72,6 +80,7 @@ export function initLauncher(getConfig: () => AppConfig): void {
   document.getElementById('launcher-btn-update')!.addEventListener('click', handleInstall);
   document.getElementById('launcher-btn-check-update')!.addEventListener('click', handleForceCheckUpdate);
   document.getElementById('launcher-btn-uninstall')!.addEventListener('click', handleUninstall);
+  document.getElementById('launcher-btn-set-default')!.addEventListener('click', handleSetDefault);
   document.getElementById('launcher-btn-browse-dir')!.addEventListener('click', handleBrowseDir);
   document.getElementById('launcher-btn-open-dir')!.addEventListener('click', handleOpenDir);
   document.getElementById('launcher-btn-abort')!.addEventListener('click', handleAbortInstall);
@@ -93,35 +102,47 @@ export function initLauncher(getConfig: () => AppConfig): void {
 }
 
 /**
+ * 解析主界面「启动游戏」应使用的包体：
+ * 优先使用已设置且仍安装的默认包体，否则回退到第一个已安装的包体。
+ */
+function resolveLaunchVariant(): GameVariant | null {
+  if (defaultVariant && state?.installed[defaultVariant]) {
+    return defaultVariant;
+  }
+  return (['Development', 'Test', 'Shipping'] as GameVariant[])
+    .find((v) => state?.installed[v]) ?? null;
+}
+
+/**
  * Update the small status text on the main-screen game card.
  * Called on init and after every install/uninstall.
  */
 export async function refreshGameCardStatus(): Promise<void> {
   state = await window.studioHub.launcherGetState();
+  defaultVariant = state.defaultVariant ?? null;
   const cardEl = document.getElementById('launch-game-play')!;
   const iconEl = cardEl.querySelector('.launch-icon-wrap') as HTMLElement;
   const nameEl = cardEl.querySelector('.launch-name') as HTMLElement;
   const statusEl = document.getElementById('launch-game-status')!;
 
-  const firstInstalled = (['Development', 'Testing', 'Shipping'] as GameVariant[])
-    .find((v) => state?.installed[v]);
+  const launchVariant = resolveLaunchVariant();
 
-  if (firstInstalled && state?.installed[firstInstalled]) {
-    const b = state.installed[firstInstalled]!;
-    const isRunning = await window.studioHub.launcherCheckRunning(firstInstalled);
+  if (launchVariant && state?.installed[launchVariant]) {
+    const b = state.installed[launchVariant]!;
+    const isRunning = await window.studioHub.launcherCheckRunning(launchVariant);
     cardEl.classList.toggle('running', isRunning);
     if (isRunning) {
       iconEl.textContent = '⏹';
       nameEl.textContent = '停止游戏';
-      statusEl.textContent = `${firstInstalled} 运行中`;
+      statusEl.textContent = `${launchVariant} 运行中`;
       statusEl.className = 'launch-game-status installed';
     } else {
       iconEl.textContent = '▶';
       nameEl.textContent = '启动游戏';
-      statusEl.textContent = `${firstInstalled} ${b.version} ${b.buildNumber}`;
+      statusEl.textContent = `${launchVariant} ${b.version} ${b.buildNumber}`;
       statusEl.className = 'launch-game-status installed';
     }
-    currentVariant = firstInstalled;
+    currentVariant = launchVariant;
   } else {
     cardEl.classList.remove('running');
     iconEl.textContent = '▶';
@@ -135,10 +156,12 @@ export async function refreshGameCardStatus(): Promise<void> {
  * Main-screen card click: launch installed game directly, or open launcher if none installed.
  */
 async function handlePlayFromCard(): Promise<void> {
-  if (!state) state = await window.studioHub.launcherGetState();
+  if (!state) {
+    state = await window.studioHub.launcherGetState();
+    defaultVariant = state.defaultVariant ?? null;
+  }
 
-  const variant = (['Development', 'Testing', 'Shipping'] as GameVariant[])
-    .find((v) => state?.installed[v]);
+  const variant = resolveLaunchVariant();
 
   if (!variant) {
     showLauncherPage();
@@ -182,6 +205,8 @@ function hideLauncherPage(): void {
 
 async function refreshLauncherData(): Promise<void> {
   state = await window.studioHub.launcherGetState();
+  defaultVariant = state.defaultVariant ?? null;
+  renderVariantTabs();
 
   const config = getConfigRef!();
   document.getElementById('launcher-install-dir-text')!.textContent =
@@ -243,6 +268,23 @@ function selectVariant(variant: GameVariant): void {
     tab.classList.toggle('active', tab.getAttribute('data-variant') === variant);
   });
   refreshLauncherData();
+}
+
+/** 渲染包体 tab 的默认星标：已安装才显示星标，默认包体为实心 ⭐，其余为空心 ☆ */
+function renderVariantTabs(): void {
+  document.querySelectorAll('#launcher-tabs .launcher-tab').forEach((tab) => {
+    const variant = tab.getAttribute('data-variant') as GameVariant;
+    const isDefault = variant === defaultVariant;
+    const isInstalled = !!state?.installed[variant];
+    tab.classList.toggle('is-default', isDefault);
+
+    const star = tab.querySelector('.launcher-tab-star') as HTMLElement | null;
+    if (star) {
+      star.style.display = isInstalled ? '' : 'none';
+      star.textContent = isDefault ? '⭐' : '☆';
+      star.title = isDefault ? '取消默认启动' : '设为默认启动';
+    }
+  });
 }
 
 function getLatestBuild(variant: GameVariant): BuildInfo | null {
@@ -364,6 +406,7 @@ function renderVariant(variant: GameVariant): void {
 
   const btnInstall = document.getElementById('launcher-btn-install') as HTMLElement;
   const btnLaunch = document.getElementById('launcher-btn-launch') as HTMLElement;
+  const btnSetDefault = document.getElementById('launcher-btn-set-default') as HTMLElement;
 
   if (!installed) {
     btnInstall.style.display = '';
@@ -375,6 +418,11 @@ function renderVariant(variant: GameVariant): void {
     btnLaunch.style.display = '';
     (document.getElementById('launcher-btn-update') as HTMLElement).style.display = 'none';
     (document.getElementById('launcher-more-wrap') as HTMLElement).style.display = '';
+
+    // 「设为/取消默认启动」：已是默认时高亮并提供取消入口
+    const isDefault = defaultVariant === variant;
+    btnSetDefault.classList.toggle('highlight', isDefault);
+    btnSetDefault.textContent = isDefault ? '✓ 取消默认启动' : '⭐ 设为默认启动';
   }
 }
 
@@ -531,6 +579,35 @@ async function handleUninstall(): Promise<void> {
   }
   await refreshLauncherData();
   await refreshGameCardStatus();
+}
+
+async function handleSetDefault(): Promise<void> {
+  closeDropdown();
+  await toggleDefaultVariant(currentVariant);
+}
+
+/**
+ * 切换默认启动包体：
+ * - 若该包体已是默认，则取消默认（清除设置）
+ * - 否则设为默认（要求已安装）
+ */
+async function toggleDefaultVariant(variant: GameVariant): Promise<void> {
+  if (!getInstalledBuild(variant)) {
+    toast('请先安装该包体');
+    return;
+  }
+
+  const makeDefault = defaultVariant !== variant;
+  const result = await window.studioHub.launcherSetDefaultVariant(makeDefault ? variant : null);
+  if (result.success) {
+    defaultVariant = makeDefault ? variant : null;
+    toast(makeDefault ? `已将 ${variant} 设为默认启动包体` : `已取消 ${variant} 的默认启动`);
+    renderVariantTabs();
+    renderVariant(currentVariant);
+    await refreshGameCardStatus();
+  } else {
+    toast(`设置失败: ${result.error}`);
+  }
 }
 
 async function handleBrowseDir(): Promise<void> {
