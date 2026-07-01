@@ -9,6 +9,7 @@ export function initToolbox(): void {
   document.getElementById('card-unreal-toolbox')!.addEventListener('click', installUnrealToolbox);
   document.getElementById('card-setup-env-vars')!.addEventListener('click', setupEnvVars);
   document.getElementById('card-bb-cli')!.addEventListener('click', handleBbCliClick);
+  document.getElementById('card-cc-switch')!.addEventListener('click', installCcSwitch);
 
   document.getElementById('ha-page-btn-install')!.addEventListener('click', haInstall);
   document.getElementById('ha-page-btn-start')!.addEventListener('click', haStart);
@@ -180,6 +181,61 @@ async function installUnrealToolbox(): Promise<void> {
     if (fill) fill.style.background = 'var(--green)';
     if (dot) dot.className = 'pipeline-status-dot ready';
     toast('Unreal Toolbox 安装完成');
+    setStatus('ok', '就绪');
+    setTimeout(() => {
+      progress?.classList.remove('visible');
+      card?.classList.remove('installing');
+    }, 2000);
+  } else {
+    setProgress(100, '安装失败');
+    if (fill) fill.style.background = 'var(--danger)';
+    if (dot) dot.className = 'pipeline-status-dot error';
+    toast(`安装失败: ${result.error}`);
+    setStatus('error', '安装失败');
+    setTimeout(() => {
+      progress?.classList.remove('visible');
+      card?.classList.remove('installing');
+      if (fill) fill.style.background = '';
+    }, 3000);
+  }
+}
+
+async function installCcSwitch(): Promise<void> {
+  const card = document.getElementById('card-cc-switch');
+  const dot = document.getElementById('dot-cc-switch');
+  const progress = document.getElementById('progress-cc-switch');
+  const fill = document.getElementById('progress-fill-cc-switch') as HTMLElement | null;
+  const label = document.getElementById('progress-label-cc-switch');
+
+  card?.classList.add('installing');
+  if (dot) dot.className = 'pipeline-status-dot warning';
+  progress?.classList.add('visible');
+
+  function setProgress(pct: number, text: string): void {
+    if (fill) fill.style.width = pct + '%';
+    if (label) label.textContent = text;
+  }
+
+  setProgress(5, '准备中...');
+  setStatus('warning', '正在安装 CC-Switch...');
+
+  setLogHook((_type, msg) => {
+    if (msg.includes('1/3')) setProgress(15, '查询最新版本...');
+    else if (msg.includes('2/3')) setProgress(30, '下载中...');
+    else if (msg.includes('Download completed')) setProgress(65, '下载完成');
+    else if (msg.includes('3/3')) setProgress(75, '安装中...');
+    else if (msg.includes('installed successfully') || msg.includes('Done!'))
+      setProgress(100, '安装完成 ✓');
+  });
+
+  const result = await window.studioHub.runScript('tools/install_cc_switch.ps1');
+  setLogHook(null);
+
+  if (result.success) {
+    setProgress(100, '安装完成 ✓');
+    if (fill) fill.style.background = 'var(--green)';
+    if (dot) dot.className = 'pipeline-status-dot ready';
+    toast('CC-Switch 安装完成');
     setStatus('ok', '就绪');
     setTimeout(() => {
       progress?.classList.remove('visible');
