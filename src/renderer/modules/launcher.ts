@@ -142,7 +142,10 @@ export async function refreshGameCardStatus(): Promise<void> {
       statusEl.textContent = `${launchVariant} ${b.version} ${b.buildNumber}`;
       statusEl.className = 'launch-game-status installed';
     }
-    currentVariant = launchVariant;
+    // 注意：此处不写回 currentVariant。
+    // launcher 页的当前选中包体只应由 tab 切换控制，
+    // 否则在 Development 已安装、Test 未安装时，主界面 5s 轮询会把
+    // currentVariant 偷偷改回 Development，导致在 Test tab 点安装却装到 Development 目录。
   } else {
     cardEl.classList.remove('running');
     iconEl.textContent = '▶';
