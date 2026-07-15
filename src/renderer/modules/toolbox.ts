@@ -416,11 +416,11 @@ async function installBbCli(): Promise<void> {
   setStatus('warning', '正在安装 BlackBlade CLI...');
 
   setLogHook((_type, msg) => {
-    if (msg.includes('Checking source')) setProgress(20, '检查源文件...');
-    else if (msg.includes('Installing to')) setProgress(40, '复制文件...');
-    else if (msg.includes('Adding to user PATH')) setProgress(60, '配置 PATH...');
-    else if (msg.includes('Verifying')) setProgress(80, '验证安装...');
-    else if (msg.includes('installed successfully')) setProgress(100, '安装完成 ✓');
+    if (msg.includes('Checking source')) setProgress(10, '拉取安装脚本...');
+    else if (msg.includes('Installing to')) setProgress(30, '下载并安装 bb cli...');
+    else if (msg.includes('已安装到')) setProgress(70, '安装文件...');
+    else if (msg.includes('已将') || msg.includes('已在用户 PATH')) setProgress(85, '配置 PATH...');
+    else if (msg.includes('installed successfully') || msg.includes('安装完成')) setProgress(100, '安装完成 ✓');
   });
 
   const result = await window.studioHub.runScript('tools/install_bb_cli.ps1');

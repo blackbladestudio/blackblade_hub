@@ -1,86 +1,59 @@
 # =============================================================================
 # install_bb_cli.ps1
-# 安装 BlackBlade CLI (bb) 到本地并添加到 PATH
+# 从 GitHub Release 安装 BlackBlade CLI (bb) 到 ~/.blackblade/bb.exe 并加入 PATH
+#
+# 实际安装逻辑由 bb cli 仓库的 install.ps1 负责，本脚本只负责拉取并执行。
+# 仓库需为 public，否则 raw.githubusercontent.com 会返回 404。
 # =============================================================================
 
 $ErrorActionPreference = "Stop"
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$HubBinDir = "$env:LOCALAPPDATA\BlackBlade Hub\bin"
-$SourceBin = Join-Path $ScriptDir "..\bin\bb.exe"
-$DestBin = Join-Path $HubBinDir "bb.exe"
+$InstallUrl = 'https://raw.githubusercontent.com/blackbladestudio/blackblade-cli/main/install.ps1'
 
-function Write-Step { param([string]$msg); Write-Host "`n=== $msg ===" -ForegroundColor Cyan }
-function Write-OK   { param([string]$msg); Write-Host "✅ $msg" -ForegroundColor Green }
-function Write-Warn { param([string]$msg); Write-Host "⚠️  $msg" -ForegroundColor Yellow }
-function Write-Info { param([string]$msg); Write-Host "  $msg" -ForegroundColor Gray }
+function Write-Step { param([string]$msg); Write-Host "=== $msg ===" -ForegroundColor Cyan }
+function Write-OK   { param([string]$msg); Write-Host "OK: $msg" -ForegroundColor Green }
 function Write-Err  { param([string]$msg); Write-Host "[ERROR] $msg" -ForegroundColor Red }
 
 Write-Host "======================================" -ForegroundColor Magenta
 Write-Host "  BlackBlade CLI (bb) Installer" -ForegroundColor Magenta
 Write-Host "======================================" -ForegroundColor Magenta
 
-# ── 1. 检查源文件 ──────────────────────────────────────────────────────────
-Write-Step "1/3 Checking source binary"
-
-if (-not (Test-Path $SourceBin)) {
-    Write-Err "Source binary not found: $SourceBin"
-    Write-Info "This script should be run from BlackBlade Hub."
-    exit 1
-}
-Write-OK "Source binary found: $SourceBin"
-
-# ── 2. 创建目标目录并复制 ──────────────────────────────────────────────────
-Write-Step "2/3 Installing to $HubBinDir"
-
-if (-not (Test-Path $HubBinDir)) {
-    New-Item -ItemType Directory -Force -Path $HubBinDir | Out-Null
-    Write-Info "Created directory: $HubBinDir"
-}
+# ── 1. 拉取远程 install.ps1 ─────────────────────────────────────────────────
+Write-Step "Checking source"
+Write-Host "  从 GitHub 拉取安装脚本: $InstallUrl"
 
 try {
-    Copy-Item -Path $SourceBin -Destination $DestBin -Force
-    Write-OK "bb.exe copied to: $DestBin"
+    $scriptContent = Invoke-RestMethod -Uri $InstallUrl -UseBasicParsing
 } catch {
-    Write-Err "Failed to copy bb.exe: $_"
+    Write-Err "拉取安装脚本失败: $_"
+    Write-Host "  请确认仓库 blackbladestudio/blackblade-cli 已设为 public" -ForegroundColor Yellow
+    exit 1
+}
+Write-OK "安装脚本已就绪"
+
+# ── 2. 执行安装 ─────────────────────────────────────────────────────────────
+Write-Step "Installing to ~/.blackblade"
+Write-Host "  开始下载并安装 bb cli..."
+
+try {
+    & ([scriptblock]::Create($scriptContent))
+} catch {
+    Write-Err "安装失败: $_"
     exit 1
 }
 
-# ── 3. 添加到 PATH ──────────────────────────────────────────────────────────
-Write-Step "3/3 Adding to user PATH"
-
-$currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
-$pathEntries = $currentPath -split ';' | Where-Object { $_ -ne '' -and $_ -ne $HubBinDir }
-
-if ($pathEntries -contains $HubBinDir) {
-    Write-OK "$HubBinDir is already in user PATH"
-} else {
-    $newPath = ($pathEntries + $HubBinDir) -join ';'
-    try {
-        [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
-        Write-OK "Added $HubBinDir to user PATH"
-
-        # 同步更新当前进程的 PATH（仅影响当前命令行）
-        $env:Path = "$env:Path;$HubBinDir"
-        Write-Info "Current process PATH updated"
-    } catch {
-        Write-Err "Failed to update PATH: $_"
-        exit 1
-    }
-}
-
-# ── 验证 ────────────────────────────────────────────────────────────────────
+# ── 3. 验证 ─────────────────────────────────────────────────────────────────
 Write-Step "Verifying installation"
 
-$verifyExe = Get-Command bb -ErrorAction SilentlyContinue
-if ($verifyExe) {
-    Write-OK "bb is available: $($verifyExe.Source)"
+$DestBin = Join-Path $env:USERPROFILE ".blackblade\bb.exe"
+if (Test-Path $DestBin) {
+    Write-OK "bb.exe installed to: $DestBin"
 } else {
-    Write-Warn "bb not found in current PATH after installation."
-    Write-Info "Please restart your terminal or run: refreshenv"
+    Write-Err "bb.exe not found after install: $DestBin"
+    exit 1
 }
 
 Write-Host "`n======================================" -ForegroundColor Magenta
 Write-OK "BlackBlade CLI installed successfully!"
-Write-Info "You can now use 'bb' in any new terminal."
-Write-Info "Run 'bb --help' to get started."
+Write-Host "  You can now use 'bb' in any new terminal." -ForegroundColor Gray
+Write-Host "  Run 'bb --help' to get started." -ForegroundColor Gray

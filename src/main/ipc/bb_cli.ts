@@ -18,7 +18,7 @@ export function registerBbCliHandlers(getMainWindow: () => BrowserWindow | null)
   getMainWindowFn = getMainWindow;
 
   ipcMain.handle('get-bb-cli-status', async (): Promise<BbCliStatus> => {
-    const installDir = path.join(process.env.LOCALAPPDATA || '', 'BlackBlade Hub', 'bin');
+    const installDir = path.join(process.env.USERPROFILE || '', '.blackblade');
     const bbExe = path.join(installDir, 'bb.exe');
 
     const isInstalled = fs.existsSync(bbExe);
@@ -51,7 +51,7 @@ export function registerBbCliHandlers(getMainWindow: () => BrowserWindow | null)
       currentProcess = null;
     }
 
-    const installDir = path.join(process.env.LOCALAPPDATA || '', 'BlackBlade Hub', 'bin');
+    const installDir = path.join(process.env.USERPROFILE || '', '.blackblade');
     const bbExe = path.join(installDir, 'bb.exe');
 
     if (!fs.existsSync(bbExe)) {

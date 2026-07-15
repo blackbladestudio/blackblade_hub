@@ -41,9 +41,7 @@
       {
         "from": "bin",
         "to": "bin",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       }
     ],
     "win": {
