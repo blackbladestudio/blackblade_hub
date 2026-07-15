@@ -3,7 +3,7 @@ import type { StudioHubAPI } from '../types/ipc';
 import { initLaunch, renderToolsColumn } from './modules/launch';
 import { initPipeline, refreshUgsStatus } from './modules/pipeline';
 import { initStudioPortal, refreshStudioPortalCards } from './modules/studio-portal';
-import { initToolbox, refreshHordeAgentStatus } from './modules/toolbox';
+import { initToolbox, refreshAssetHiveStatus, refreshHordeAgentStatus } from './modules/toolbox';
 import { initConfigModal, prefillConfigForm } from './modules/config-modal';
 import { initLogPanel, appendLog } from './modules/log-panel';
 import { initLauncher } from './modules/launcher';
@@ -64,6 +64,7 @@ function renderUI(): void {
   refreshStudioChatUrl();
 
   refreshHordeAgentStatus();
+  refreshAssetHiveStatus();
   refreshUgsStatus();
 }
 

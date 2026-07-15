@@ -1,6 +1,6 @@
 {
   "name": "blackblade-hub",
-  "version": "1.9.4",
+  "version": "1.9.5",
   "author": "BlackBlade",
   "description": "BlackBlade Hub",
   "main": "dist/main/index.js",
@@ -9,7 +9,8 @@
     "dev": "node scripts/build.mjs && electron .",
     "start": "electron .",
     "pack": "node scripts/build.mjs && electron-builder --dir",
-    "dist": "node scripts/build.mjs && electron-builder --win --x64"
+    "dist": "node scripts/build.mjs && electron-builder --win --x64",
+    "test": "node scripts/build.mjs && node --test tests/*.test.cjs"
   },
   "build": {
     "appId": "com.blackblade.hub",
@@ -33,12 +34,16 @@
       {
         "from": "assets",
         "to": "assets",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "bin",
         "to": "bin",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
@@ -67,7 +72,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "electron": "^33.4.0",
-    "electron-builder": "^25.1.8",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.24.0",
     "typescript": "^5.9.3"
   }

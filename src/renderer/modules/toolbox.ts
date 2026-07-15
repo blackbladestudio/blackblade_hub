@@ -3,6 +3,7 @@ import { showLogPanel, setLogHook } from './log-panel';
 
 let cliOutputCallback: ((type: string, msg: string) => void) | null = null;
 let isCliReady = false;
+let isAssetHiveInstalling = false;
 
 export function initToolbox(): void {
   document.getElementById('card-horde-agent')!.addEventListener('click', showHordeAgentPage);
@@ -10,6 +11,7 @@ export function initToolbox(): void {
   document.getElementById('card-setup-env-vars')!.addEventListener('click', setupEnvVars);
   document.getElementById('card-bb-cli')!.addEventListener('click', handleBbCliClick);
   document.getElementById('card-cc-switch')!.addEventListener('click', installCcSwitch);
+  document.getElementById('card-assethive')!.addEventListener('click', handleAssetHiveClick);
 
   document.getElementById('ha-page-btn-install')!.addEventListener('click', haInstall);
   document.getElementById('ha-page-btn-start')!.addEventListener('click', haStart);
@@ -27,6 +29,145 @@ export function initToolbox(): void {
     }
     appendCliLine(msg.type, msg.msg);
   });
+
+  void refreshAssetHiveStatus();
+}
+
+export async function refreshAssetHiveStatus(): Promise<void> {
+  const dot = document.getElementById('dot-assethive');
+  const description = document.getElementById('desc-assethive');
+  if (!dot || !description || isAssetHiveInstalling) return;
+
+  const [status, release] = await Promise.all([
+    window.studioHub.getAssetHiveStatus(),
+    window.studioHub.getAssetHiveRelease(),
+  ]);
+
+  if (status.state === 'ready') {
+    dot.className = release.updateAvailable
+      ? 'pipeline-status-dot warning'
+      : 'pipeline-status-dot ready';
+    if (release.updateAvailable) {
+      description.textContent = `已安装 v${status.version} · 可升级 v${release.version}`;
+    } else if (!release.available) {
+      description.textContent = `已安装 v${status.version} · 更新状态不可用`;
+    } else {
+      description.textContent = `已安装 v${status.version} · 点击启动`;
+    }
+    return;
+  }
+
+  if (status.state === 'damaged') {
+    dot.className = 'pipeline-status-dot error';
+    description.textContent = '安装损坏 · 点击修复';
+    return;
+  }
+
+  dot.className = release.available ? 'pipeline-status-dot warning' : 'pipeline-status-dot';
+  description.textContent = release.available
+    ? `未安装 · 最新 v${release.version}`
+    : '未安装 · 暂时无法获取版本';
+}
+
+async function handleAssetHiveClick(): Promise<void> {
+  if (isAssetHiveInstalling) return;
+  const [status, release] = await Promise.all([
+    window.studioHub.getAssetHiveStatus(),
+    window.studioHub.getAssetHiveRelease(),
+  ]);
+
+  if (status.state === 'ready' && !release.updateAvailable) {
+    const result = await window.studioHub.launchAssetHive();
+    if (result.success) {
+      toast('AssetHive 已启动');
+      setStatus('ok', '就绪');
+    } else {
+      toast(`启动失败: ${result.error || '安装路径无效'}`);
+      setStatus('error', '启动失败');
+      await refreshAssetHiveStatus();
+    }
+    return;
+  }
+
+  if (
+    status.state === 'ready'
+    && release.updateAvailable
+    && !window.confirm(`检测到 AssetHive ${release.version}，是否升级？`)
+  ) {
+    const result = await window.studioHub.launchAssetHive();
+    if (!result.success) toast(`启动失败: ${result.error || '未知错误'}`);
+    return;
+  }
+
+  await installAssetHive(status.state === 'ready');
+}
+
+async function installAssetHive(isUpgrade: boolean): Promise<void> {
+  const card = document.getElementById('card-assethive');
+  const dot = document.getElementById('dot-assethive');
+  const progress = document.getElementById('progress-assethive');
+  const fill = document.getElementById('progress-fill-assethive') as HTMLElement | null;
+  const label = document.getElementById('progress-label-assethive');
+  const description = document.getElementById('desc-assethive');
+
+  const setProgress = (percent: number, text: string): void => {
+    if (fill) fill.style.width = `${percent}%`;
+    if (label) label.textContent = text;
+  };
+
+  isAssetHiveInstalling = true;
+  card?.classList.add('installing');
+  progress?.classList.add('visible');
+  if (dot) dot.className = 'pipeline-status-dot warning';
+  if (description) description.textContent = isUpgrade ? '正在升级...' : '正在安装...';
+  if (fill) fill.style.background = '';
+  setProgress(5, '查询最新版本...');
+  setStatus('warning', isUpgrade ? '正在升级 AssetHive...' : '正在安装 AssetHive...');
+  showLogPanel();
+
+  setLogHook((_type, message) => {
+    if (message.includes('release:')) setProgress(10, '查询最新版本...');
+    else if (message.includes('download: checksum')) setProgress(20, '下载校验文件...');
+    else if (message.includes('download: installer')) setProgress(35, '下载安装包...');
+    else if (message.includes('verified:')) setProgress(70, '完整性验证通过');
+    else if (message.includes('install:')) setProgress(80, isUpgrade ? '正在升级...' : '正在安装...');
+    else if (message.includes('restart-required:')) setProgress(100, '安装完成 · 需要重启');
+    else if (message.includes('success:')) setProgress(100, '安装完成 ✓');
+  });
+
+  const result = await window.studioHub.installAssetHive();
+  setLogHook(null);
+
+  if (result.success) {
+    const verified = await window.studioHub.getAssetHiveStatus();
+    if (verified.state === 'ready') {
+      setProgress(100, '安装完成 ✓');
+      if (fill) fill.style.background = 'var(--green)';
+      if (dot) dot.className = 'pipeline-status-dot ready';
+      toast(isUpgrade ? 'AssetHive 升级完成' : 'AssetHive 安装完成');
+      setStatus('ok', '就绪');
+    } else {
+      setProgress(100, '安装后验证失败');
+      if (fill) fill.style.background = 'var(--danger)';
+      if (dot) dot.className = 'pipeline-status-dot error';
+      toast('安装完成，但未检测到有效的 AssetHive 安装');
+      setStatus('error', '安装验证失败');
+    }
+  } else {
+    setProgress(100, '安装失败 · 点击重试');
+    if (fill) fill.style.background = 'var(--danger)';
+    if (dot) dot.className = 'pipeline-status-dot error';
+    toast(`AssetHive 安装失败: ${result.error || `退出码 ${result.exitCode ?? '未知'}`}`);
+    setStatus('error', '安装失败');
+  }
+
+  isAssetHiveInstalling = false;
+  setTimeout(() => {
+    progress?.classList.remove('visible');
+    card?.classList.remove('installing');
+    if (fill) fill.style.background = '';
+    void refreshAssetHiveStatus();
+  }, result.success ? 2000 : 3500);
 }
 
 async function handleBbCliClick(): Promise<void> {

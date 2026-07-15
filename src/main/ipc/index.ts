@@ -8,6 +8,7 @@ import { registerLauncherHandlers } from './launcher';
 import { registerUgsHandlers } from './ugs';
 import { registerUpdaterHandlers } from './updater';
 import { registerBbCliHandlers } from './bb_cli';
+import { registerAssetHiveHandlers } from './assethive';
 
 export function registerAllHandlers(getMainWindow: () => BrowserWindow | null): void {
   registerConfigHandlers();
@@ -19,4 +20,5 @@ export function registerAllHandlers(getMainWindow: () => BrowserWindow | null): 
   registerUgsHandlers();
   registerUpdaterHandlers();
   registerBbCliHandlers(getMainWindow);
+  registerAssetHiveHandlers(getMainWindow);
 }

@@ -631,6 +631,7 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 .pipeline-card-icon.ugs     { background: var(--green-dim); border: 1px solid rgba(78,203,138,0.25); }
 .pipeline-card-icon.env     { background: rgba(200,164,90,0.1); border: 1px solid rgba(200,164,90,0.2); }
 .pipeline-card-icon.cli     { background: rgba(100,220,180,0.12); border: 1px solid rgba(100,220,180,0.25); }
+.pipeline-card-icon.assethive { background: rgba(241,145,72,0.12); border: 1px solid rgba(241,145,72,0.28); color: #f19148; }
 .pipeline-card-icon.studio-home { background: rgba(168,130,255,0.12); border: 1px solid rgba(168,130,255,0.28); }
 .pipeline-card-icon.studio-chat { background: rgba(100,200,255,0.12); border: 1px solid rgba(100,200,255,0.28); }
 .pipeline-card-icon.studio-hue { background: rgba(255,140,90,0.12); border: 1px solid rgba(255,140,90,0.28); }

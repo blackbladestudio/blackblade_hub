@@ -21,6 +21,10 @@ const api: StudioHubAPI = {
   onBbCliOutput(callback) {
     ipcRenderer.on('bb-cli-output', (_e, msg) => callback(msg));
   },
+  getAssetHiveStatus: () => ipcRenderer.invoke('assethive:get-status'),
+  getAssetHiveRelease: () => ipcRenderer.invoke('assethive:get-release'),
+  installAssetHive: () => ipcRenderer.invoke('assethive:install'),
+  launchAssetHive: () => ipcRenderer.invoke('assethive:launch'),
   winMinimize: () => ipcRenderer.send('win-minimize'),
   winMaximize: () => ipcRenderer.send('win-maximize'),
   winClose: () => ipcRenderer.send('win-close'),

@@ -31,6 +31,22 @@ export interface BbCliStatus {
   version: string | null;
 }
 
+export interface AssetHiveStatus {
+  state: 'not-installed' | 'ready' | 'damaged';
+  isInstalled: boolean;
+  installPath: string | null;
+  version: string | null;
+  error?: string;
+}
+
+export interface AssetHiveReleaseStatus {
+  available: boolean;
+  version: string | null;
+  updateAvailable: boolean;
+  releaseUrl?: string;
+  error?: string;
+}
+
 export interface CliOutputMessage {
   type: 'stdout' | 'stderr' | 'info' | 'error' | 'exit';
   msg: string;
@@ -83,6 +99,10 @@ export interface StudioHubAPI {
   getBbCliStatus(): Promise<BbCliStatus>;
   runBbCliCommand(args: string[]): Promise<{ success: boolean; error?: string }>;
   onBbCliOutput(callback: (msg: CliOutputMessage) => void): void;
+  getAssetHiveStatus(): Promise<AssetHiveStatus>;
+  getAssetHiveRelease(): Promise<AssetHiveReleaseStatus>;
+  installAssetHive(): Promise<ScriptResult>;
+  launchAssetHive(): Promise<LaunchResult>;
   winMinimize(): void;
   winMaximize(): void;
   winClose(): void;

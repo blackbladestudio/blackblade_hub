@@ -1,0 +1,172 @@
+import { BrowserWindow, ipcMain } from 'electron';
+import { execFile, spawn } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import { promisify } from 'util';
+import type {
+  AssetHiveReleaseStatus,
+  AssetHiveStatus,
+  LaunchResult,
+  ScriptLogMessage,
+  ScriptResult,
+} from '../../types/ipc';
+import { resolvePath } from '../utils';
+import {
+  ASSETHIVE_PRODUCT_NAME,
+  ASSETHIVE_PUBLISHER,
+  ASSETHIVE_REPOSITORY,
+  compareVersions,
+  getExpectedAssetHiveExecutable,
+  type GitHubReleasePayload,
+  isTrustedAssetHivePath,
+  normalizeVersion,
+  selectReleaseAssets,
+} from '../services/assethive';
+
+const execFileAsync = promisify(execFile);
+
+function getProgramFilesRoot(): string {
+  return process.env.ProgramW6432 || process.env.ProgramFiles || 'C:\\Program Files';
+}
+
+async function queryInstalledVersion(): Promise<string | null> {
+  const command = `$items = @(
+    Get-ItemProperty 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' -ErrorAction SilentlyContinue
+    Get-ItemProperty 'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' -ErrorAction SilentlyContinue
+  ) | Where-Object { $_.DisplayName -eq '${ASSETHIVE_PRODUCT_NAME}' -and $_.Publisher -eq '${ASSETHIVE_PUBLISHER}' };
+  $item = $items | Select-Object -First 1;
+  if ($item) { [Console]::Out.Write([string]$item.DisplayVersion) }`;
+  try {
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', command],
+      { encoding: 'utf8', timeout: 5000, windowsHide: true },
+    );
+    return normalizeVersion(stdout.trim());
+  } catch {
+    return null;
+  }
+}
+
+export async function getAssetHiveStatus(): Promise<AssetHiveStatus> {
+  const programFilesRoot = getProgramFilesRoot();
+  const installPath = getExpectedAssetHiveExecutable(programFilesRoot);
+  const executableExists = fs.existsSync(installPath) && fs.statSync(installPath).isFile();
+  const version = await queryInstalledVersion();
+
+  if (executableExists && version && isTrustedAssetHivePath(installPath, programFilesRoot)) {
+    return { state: 'ready', isInstalled: true, installPath, version };
+  }
+  if (executableExists || version) {
+    return {
+      state: 'damaged',
+      isInstalled: false,
+      installPath: executableExists ? installPath : null,
+      version,
+      error: 'AssetHive installation is incomplete. Reinstall or repair the application.',
+    };
+  }
+  return { state: 'not-installed', isInstalled: false, installPath: null, version: null };
+}
+
+async function getAssetHiveReleaseStatus(): Promise<AssetHiveReleaseStatus> {
+  try {
+    const response = await fetch(`https://api.github.com/repos/${ASSETHIVE_REPOSITORY}/releases/latest`, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'BlackBlade-Hub',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) {
+      throw new Error(`GitHub release query failed (${response.status})`);
+    }
+    const release = selectReleaseAssets(await response.json() as GitHubReleasePayload);
+    const local = await getAssetHiveStatus();
+    return {
+      available: true,
+      version: release.version,
+      updateAvailable: Boolean(local.version && compareVersions(release.version, local.version) > 0),
+      releaseUrl: release.releaseUrl,
+    };
+  } catch (error) {
+    return {
+      available: false,
+      version: null,
+      updateAvailable: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function sendScriptLog(
+  getMainWindow: () => BrowserWindow | null,
+  type: ScriptLogMessage['type'],
+  msg: string,
+): void {
+  if (!msg.trim()) return;
+  getMainWindow()?.webContents.send('script-log', { type, msg: msg.trim() } as ScriptLogMessage);
+}
+
+function installAssetHive(getMainWindow: () => BrowserWindow | null): Promise<ScriptResult> {
+  return new Promise((resolve) => {
+    const scriptPath = resolvePath('tools/install_assethive.ps1');
+    if (!scriptPath || !fs.existsSync(scriptPath)) {
+      resolve({ success: false, error: `AssetHive installer script not found: ${scriptPath}` });
+      return;
+    }
+    const child = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptPath],
+      { cwd: path.dirname(scriptPath), shell: false, windowsHide: true },
+    );
+    let stderr = '';
+    child.stdout.on('data', (data: Buffer) => sendScriptLog(getMainWindow, 'stdout', data.toString()));
+    child.stderr.on('data', (data: Buffer) => {
+      stderr += data.toString();
+      sendScriptLog(getMainWindow, 'stderr', data.toString());
+    });
+    child.on('error', (error) => resolve({ success: false, error: error.message }));
+    child.on('close', (code) => {
+      resolve({
+        success: code === 0,
+        exitCode: code ?? undefined,
+        error: code === 0 ? undefined : stderr.trim() || `Installer exited with code ${code}`,
+      });
+    });
+  });
+}
+
+export async function launchAssetHive(): Promise<LaunchResult> {
+  const status = await getAssetHiveStatus();
+  const programFilesRoot = getProgramFilesRoot();
+  if (
+    status.state !== 'ready'
+    || !status.installPath
+    || !isTrustedAssetHivePath(status.installPath, programFilesRoot)
+    || !fs.existsSync(status.installPath)
+  ) {
+    return { success: false, error: status.error || 'AssetHive is not installed correctly.' };
+  }
+  try {
+    const child = spawn(status.installPath, [], {
+      cwd: path.dirname(status.installPath),
+      detached: true,
+      stdio: 'ignore',
+      shell: false,
+      windowsHide: false,
+    });
+    child.unref();
+    return { success: true, path: status.installPath, pid: child.pid };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export function registerAssetHiveHandlers(getMainWindow: () => BrowserWindow | null): void {
+  ipcMain.handle('assethive:get-status', getAssetHiveStatus);
+  ipcMain.handle('assethive:get-release', getAssetHiveReleaseStatus);
+  ipcMain.handle('assethive:install', () => installAssetHive(getMainWindow));
+  ipcMain.handle('assethive:launch', launchAssetHive);
+}
