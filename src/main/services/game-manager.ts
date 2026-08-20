@@ -13,10 +13,15 @@ import type {
 import { GAME_VARIANTS } from '../../types/launcher';
 import type { MinioConfig, LauncherConfig } from '../../types/config';
 import * as minio from './minio-client';
-import { mcMirror, mcListObjects, setActiveStream } from './mc-downloader';
+import { mcMirror, mcListObjects, setActiveStream, type McListObject } from './mc-downloader';
 
 const APP_NAME = 'BlackBlade Hub';
 const STATE_FILE = 'launcher-state.json';
+const LARGE_FILE_THRESHOLD = 500 * 1024 * 1024; // 500MB
+/** 文件系统时间精度差异的容忍量，避免因秒级取整误判为过期 */
+const MTIME_TOLERANCE_MS = 2000;
+const DOWNLOAD_TMP_SUFFIX = '.downloading';
+const DOWNLOAD_META_SUFFIX = '.downloading.meta';
 const activePids: Map<GameVariant, { pid: number; exePath: string }> = new Map();
 
 function getStatePath(): string {
@@ -72,17 +77,36 @@ function emitLog(
   win?.webContents.send('script-log', { type, msg });
 }
 
-function buildLocalFileSizeMap(installDir: string): Map<string, number> {
-  const localMap = new Map<string, number>();
-  for (const file of listLocalFiles(installDir)) {
+interface LocalFileStat {
+  size: number;
+  mtimeMs: number;
+}
+
+// 传入 files 可复用已有的目录遍历结果，避免同一次流程里重复走盘
+function buildLocalStatMap(installDir: string, files?: string[]): Map<string, LocalFileStat> {
+  const localMap = new Map<string, LocalFileStat>();
+  for (const file of files ?? listLocalFiles(installDir)) {
     const rel = path.relative(installDir, file).replace(/\\/g, '/').toLowerCase();
     try {
-      localMap.set(rel, fs.statSync(file).size);
+      const stat = fs.statSync(file);
+      localMap.set(rel, { size: stat.size, mtimeMs: stat.mtimeMs });
     } catch {
       // ignore files that disappear while scanning
     }
   }
   return localMap;
+}
+
+/**
+ * 本地文件是否比远端旧。用于大文件——它们被排除在 mc mirror 之外，
+ * 没有 mirror 的 mtime 比对兜底，需要在这里自行判断内容是否已变化。
+ * 无法取得可靠时间时一律返回 false，避免误触发整包重传。
+ */
+function isLocalOlderThanRemote(localMtimeMs?: number, remoteLastModified?: string): boolean {
+  if (localMtimeMs === undefined || !remoteLastModified) return false;
+  const remoteMs = Date.parse(remoteLastModified);
+  if (Number.isNaN(remoteMs)) return false;
+  return localMtimeMs + MTIME_TOLERANCE_MS < remoteMs;
 }
 
 function normalizeObjectRelativePath(objectKey: string, remotePrefix: string): string {
@@ -95,24 +119,43 @@ function normalizeObjectRelativePath(objectKey: string, remotePrefix: string): s
   return normalizedKey;
 }
 
+export interface SyncPlanEntry {
+  relativePath: string;
+  size: number;
+  initialSize?: number;
+  initialMtimeMs?: number;
+  lastModified?: string;
+}
+
 export function buildSyncPlan(
-  remoteObjects: Array<{ key: string; size: number }>,
+  remoteObjects: Array<{ key: string; size: number; lastModified?: string }>,
   installDir: string,
   remotePrefix: string,
-): Array<{ relativePath: string; size: number; initialSize?: number }> {
-  const localMap = buildLocalFileSizeMap(installDir);
+  precomputedLocalMap?: Map<string, LocalFileStat>,
+): SyncPlanEntry[] {
+  const localMap = precomputedLocalMap ?? buildLocalStatMap(installDir);
   return remoteObjects
     .map((obj) => {
       const relativePath = normalizeObjectRelativePath(obj.key, remotePrefix);
       const normalizedRel = relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
-      const initialSize = localMap.get(normalizedRel.toLowerCase());
+      const local = localMap.get(normalizedRel.toLowerCase());
       return {
         relativePath: normalizedRel,
         size: obj.size,
-        initialSize,
+        initialSize: local?.size,
+        initialMtimeMs: local?.mtimeMs,
+        lastModified: obj.lastModified,
       };
     })
-    .filter((file) => file.relativePath && file.initialSize !== file.size);
+    .filter((file) => {
+      if (!file.relativePath) return false;
+      if (file.initialSize !== file.size) return true;
+      // 大小一致的小文件交给 mc mirror 判断；大文件不经过 mirror，这里补上时间比对
+      if (file.size >= LARGE_FILE_THRESHOLD) {
+        return isLocalOlderThanRemote(file.initialMtimeMs, file.lastModified);
+      }
+      return false;
+    });
 }
 
 function getBuildLabel(build: BuildInfo): string {
@@ -212,8 +255,7 @@ function findExeInDirectory(dir: string): string | null {
 // Install: directory-based (mc mirror)
 // ---------------------------------------------------------------------------
 
-const LARGE_FILE_THRESHOLD = 500 * 1024 * 1024; // 500MB
-
+/** 返回本次使用的远端对象清单，供后续校验阶段复用，避免重复全量列举 */
 async function installDirectoryBuild(
   build: BuildInfo,
   minioConfig: MinioConfig,
@@ -221,7 +263,7 @@ async function installDirectoryBuild(
   installDir: string,
   win: BrowserWindow | null,
   excludePatterns?: string[],
-): Promise<void> {
+): Promise<McListObject[]> {
   const { variant, objectKey: prefix } = build;
 
   emitLog(win, 'info', `[launcher] 开始快速同步 ${variant}: ${prefix}`);
@@ -239,12 +281,16 @@ async function installDirectoryBuild(
   const totalSize = remoteObjects.reduce((sum, obj) => sum + obj.size, 0);
   const totalFiles = remoteObjects.length;
 
-  const syncPlan = buildSyncPlan(remoteObjects, installDir, prefix);
+  // 本地目录只遍历一次，同步计划与多余文件清理共用同一份结果
+  const localFiles = listLocalFiles(installDir);
+  const localStatMap = buildLocalStatMap(installDir, localFiles);
+
+  const syncPlan = buildSyncPlan(remoteObjects, installDir, prefix, localStatMap);
   const needSyncBytes = syncPlan.reduce((sum, f) => sum + f.size, 0);
 
   emitLog(win, 'info', `[launcher] 远端 ${totalFiles} 个文件，共 ${formatBytes(totalSize)}；需同步 ${syncPlan.length} 个文件，${formatBytes(needSyncBytes)}`);
 
-  const removed = cleanupExtraFiles(remoteObjects, installDir, prefix, excludePatterns);
+  const removed = cleanupExtraFiles(remoteObjects, installDir, prefix, excludePatterns, localFiles);
   if (removed > 0) {
     emitLog(win, 'info', `[launcher] 清理了 ${removed} 个多余本地文件`);
   }
@@ -299,7 +345,7 @@ async function installDirectoryBuild(
 
       await streamDownloadFile(minioConfig, objectKey, targetPath, file.size, (bytes) => {
         emitOverallProgress(bytes);
-      });
+      }, file.lastModified);
 
       downloadedSoFar += file.size;
       filesDoneSoFar++;
@@ -307,7 +353,13 @@ async function installDirectoryBuild(
     }
   }
 
-  const largeExcludes = largeFiles.map((f) => f.relativePath.replace(/\\/g, '/'));
+  // 所有大文件都由上面的流式下载负责，一律不交给 mc mirror。
+  // 只排除「本次需同步」的大文件会导致已是最新的大文件落到 mirror 手里，
+  // 而它们的 mtime 是本地写盘时间，mirror 会判定远端更新从而整包重传。
+  const largeExcludes = remoteObjects
+    .filter((obj) => obj.size >= LARGE_FILE_THRESHOLD)
+    .map((obj) => normalizeObjectRelativePath(obj.key, prefix))
+    .filter((rel) => rel.length > 0);
   const allExcludes = [...(excludePatterns ?? []), ...largeExcludes];
 
   const smallSyncBytes = smallFiles.reduce((sum, f) => sum + f.size, 0);
@@ -337,6 +389,43 @@ async function installDirectoryBuild(
       excludePatterns: allExcludes.length > 0 ? allExcludes : undefined,
     });
   }
+
+  return remoteObjects;
+}
+
+interface DownloadMeta {
+  objectKey: string;
+  size: number;
+  lastModified: string;
+}
+
+/**
+ * 残留的分片是否确属同一个远端对象。
+ * 缺少 meta（老版本留下的分片）一律视为不可续传：无法确认来源时
+ * 续传会把两个版本的内容拼接成一个大小正确但内容损坏的文件。
+ */
+function canResumeDownload(metaPath: string, expected: DownloadMeta): boolean {
+  try {
+    const saved = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as Partial<DownloadMeta>;
+    return saved.objectKey === expected.objectKey
+      && saved.size === expected.size
+      && saved.lastModified === expected.lastModified;
+  } catch {
+    return false;
+  }
+}
+
+/** 把本地 mtime 对齐到远端对象时间，使后续增量判断与 mc 的语义一致 */
+function applyRemoteMtime(filePath: string, lastModified?: string): void {
+  if (!lastModified) return;
+  const ts = Date.parse(lastModified);
+  if (Number.isNaN(ts)) return;
+  try {
+    const d = new Date(ts);
+    fs.utimesSync(filePath, d, d);
+  } catch {
+    // 设置失败只会让下次多比对一次，不影响文件内容
+  }
 }
 
 async function streamDownloadFile(
@@ -345,20 +434,38 @@ async function streamDownloadFile(
   targetPath: string,
   totalSize: number,
   onProgress: (downloadedBytes: number) => void,
+  remoteLastModified?: string,
 ): Promise<void> {
-  const tmpPath = targetPath + '.downloading';
+  const tmpPath = targetPath + DOWNLOAD_TMP_SUFFIX;
+  const metaPath = targetPath + DOWNLOAD_META_SUFFIX;
+  const meta: DownloadMeta = {
+    objectKey,
+    size: totalSize,
+    lastModified: remoteLastModified ?? '',
+  };
 
   let existingBytes = 0;
   try {
     if (fs.existsSync(tmpPath)) {
-      existingBytes = fs.statSync(tmpPath).size;
-      if (existingBytes >= totalSize) {
+      if (canResumeDownload(metaPath, meta)) {
+        existingBytes = fs.statSync(tmpPath).size;
+        if (existingBytes >= totalSize) {
+          existingBytes = 0;
+          fs.unlinkSync(tmpPath);
+        }
+      } else {
         existingBytes = 0;
         fs.unlinkSync(tmpPath);
       }
     }
   } catch {
     existingBytes = 0;
+  }
+
+  try {
+    fs.writeFileSync(metaPath, JSON.stringify(meta), 'utf-8');
+  } catch {
+    // 写不出 meta 就放弃续传能力，但不阻断本次下载
   }
 
   const stream = existingBytes > 0
@@ -399,9 +506,22 @@ async function streamDownloadFile(
       fs.unlinkSync(targetPath);
     }
     fs.renameSync(tmpPath, targetPath);
+    applyRemoteMtime(targetPath, remoteLastModified);
+    try { fs.unlinkSync(metaPath); } catch { /* ignore */ }
   } finally {
     setActiveStream(null);
   }
+}
+
+/** 若路径是下载中间产物，返回其对应的目标文件相对路径；否则返回 null */
+function downloadTempBasePath(relLower: string): string | null {
+  if (relLower.endsWith(DOWNLOAD_META_SUFFIX)) {
+    return relLower.slice(0, -DOWNLOAD_META_SUFFIX.length);
+  }
+  if (relLower.endsWith(DOWNLOAD_TMP_SUFFIX)) {
+    return relLower.slice(0, -DOWNLOAD_TMP_SUFFIX.length);
+  }
+  return null;
 }
 
 function cleanupExtraFiles(
@@ -409,6 +529,7 @@ function cleanupExtraFiles(
   installDir: string,
   remotePrefix: string,
   excludePatterns?: string[],
+  precomputedLocalFiles?: string[],
 ): number {
   const remoteSet = new Set<string>();
   for (const obj of remoteObjects) {
@@ -422,13 +543,17 @@ function cleanupExtraFiles(
   });
 
   let removed = 0;
-  const localFiles = listLocalFiles(installDir);
+  const localFiles = precomputedLocalFiles ?? listLocalFiles(installDir);
   for (const file of localFiles) {
     const rel = path.relative(installDir, file).replace(/\\/g, '/');
     const relLower = rel.toLowerCase();
 
     if (excludeRegexes.some((re) => re.test(rel) || re.test(relLower))) continue;
-    if (relLower.endsWith('.downloading')) continue;
+
+    // 未完成的分片及其 meta：目标对象仍在远端时保留以便续传；
+    // 远端已经没有该对象则属于换版本后遗留的孤儿，按多余文件删除。
+    const tmpBase = downloadTempBasePath(relLower);
+    if (tmpBase !== null && remoteSet.has(tmpBase)) continue;
 
     if (!remoteSet.has(relLower)) {
       try {
@@ -475,18 +600,14 @@ function formatBytes(bytes: number): string {
   return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
 }
 
-async function verifyInstalledFiles(
-  minioConfig: MinioConfig,
-  bucket: string,
+// remoteObjects 由安装阶段传入，复用同一份清单，省掉一次远端全量列举
+function verifyInstalledFiles(
+  remoteObjects: Array<{ key: string; size: number }>,
   prefix: string,
   installDir: string,
   win: BrowserWindow | null,
   variant: GameVariant,
-): Promise<{ verified: number; missing: number; mismatched: number }> {
-  const remoteObjects = await mcListObjects(minioConfig, bucket, prefix, {
-    onLog: (type, msg) => emitLog(win, type, msg),
-  });
-
+): { verified: number; missing: number; mismatched: number } {
   let verified = 0;
   let missing = 0;
   let mismatched = 0;
@@ -610,10 +731,10 @@ export async function installBuild(
 
   try {
     if (build.isDirectory) {
-      await installDirectoryBuild(build, minioConfig, minioConfig.bucket, installDir, win, launcherConfig.excludePatterns);
+      const remoteObjects = await installDirectoryBuild(build, minioConfig, minioConfig.bucket, installDir, win, launcherConfig.excludePatterns);
 
       emitProgress(win, { variant, phase: 'verifying', percent: 0, message: '正在校验文件...' });
-      const verifyResult = await verifyInstalledFiles(minioConfig, minioConfig.bucket, build.objectKey, installDir, win, variant);
+      const verifyResult = verifyInstalledFiles(remoteObjects, build.objectKey, installDir, win, variant);
       if (verifyResult.mismatched > 0) {
         throw new Error(`校验失败: ${verifyResult.mismatched} 个文件大小不一致`);
       }
@@ -989,10 +1110,11 @@ export async function forceCheckUpdates(
         remoteFileCount = remoteObjects.length;
 
         const installDir = path.join(launcherConfig.installDir, variant);
-        const localFiles = listLocalFiles(installDir);
-        localFileCount = localFiles.length;
+        // 本地目录只走一次盘，文件数统计与同步计划共用
+        const localStatMap = buildLocalStatMap(installDir);
+        localFileCount = localStatMap.size;
 
-        const syncPlan = buildSyncPlan(remoteObjects, installDir, prefix);
+        const syncPlan = buildSyncPlan(remoteObjects, installDir, prefix, localStatMap);
         for (const file of syncPlan) {
           if (file.initialSize === undefined) {
             missingFiles++;

@@ -78,7 +78,8 @@ export function initLauncher(getConfig: () => AppConfig): void {
   document.getElementById('launcher-btn-install')!.addEventListener('click', handleInstall);
   document.getElementById('launcher-btn-launch')!.addEventListener('click', handleLaunch);
   document.getElementById('launcher-btn-update')!.addEventListener('click', handleInstall);
-  document.getElementById('launcher-btn-check-update')!.addEventListener('click', handleForceCheckUpdate);
+  document.getElementById('launcher-btn-check-update')!.addEventListener('click', handleQuickCheckUpdate);
+  document.getElementById('launcher-btn-verify-files')!.addEventListener('click', handleForceCheckUpdate);
   document.getElementById('launcher-btn-uninstall')!.addEventListener('click', handleUninstall);
   document.getElementById('launcher-btn-set-default')!.addEventListener('click', handleSetDefault);
   document.getElementById('launcher-btn-browse-dir')!.addEventListener('click', handleBrowseDir);
@@ -498,7 +499,11 @@ async function handleInstall(): Promise<void> {
   await pollRunningStatus();
 }
 
-async function handleForceCheckUpdate(): Promise<void> {
+/**
+ * 快速检查：只比对远端与本地的 version.txt，不列举文件。
+ * 日常「有没有新版本」用这个，秒级返回。
+ */
+async function handleQuickCheckUpdate(): Promise<void> {
   const btnCheck = document.getElementById('launcher-btn-check-update') as HTMLElement;
   const origText = btnCheck.textContent;
   btnCheck.textContent = '检测中...';
@@ -506,9 +511,45 @@ async function handleForceCheckUpdate(): Promise<void> {
 
   try {
     const selectedBuild = getSelectedBuild(currentVariant);
+    const result = await window.studioHub.launcherCheckUpdates(currentVariant, selectedBuild?.objectKey);
+    if (result.error) {
+      toast(`检测失败: ${result.error}`);
+      return;
+    }
+
+    const btnUpdate = document.getElementById('launcher-btn-update') as HTMLElement;
+    if (result.hasUpdate) {
+      btnUpdate.style.display = '';
+      const from = result.localVersion || '无';
+      toast(result.remoteVersion ? `发现新版本: ${from} → ${result.remoteVersion}` : '发现可用更新');
+    } else {
+      btnUpdate.style.display = 'none';
+      toast('已是最新版本');
+    }
+  } catch (err) {
+    toast(`检测更新失败: ${err instanceof Error ? err.message : String(err)}`);
+  } finally {
+    btnCheck.textContent = origText;
+    btnCheck.removeAttribute('disabled');
+    closeDropdown();
+  }
+}
+
+/**
+ * 全量校验：列举远端所有对象并逐个比对本地文件大小。
+ * 能发现文件损坏或缺失，但在几万文件的包体上耗时明显。
+ */
+async function handleForceCheckUpdate(): Promise<void> {
+  const btnCheck = document.getElementById('launcher-btn-verify-files') as HTMLElement;
+  const origText = btnCheck.textContent;
+  btnCheck.textContent = '校验中...';
+  btnCheck.setAttribute('disabled', 'true');
+
+  try {
+    const selectedBuild = getSelectedBuild(currentVariant);
     const result = await window.studioHub.launcherForceCheckUpdates(currentVariant, selectedBuild?.objectKey);
     if (result.error || !result.data) {
-      toast(`检测失败: ${result.error || '未知错误'}`);
+      toast(`校验失败: ${result.error || '未知错误'}`);
       return;
     }
 
@@ -520,7 +561,7 @@ async function handleForceCheckUpdate(): Promise<void> {
 
     appendLog(
       'info',
-      `[launcher] 检查更新结果 ${current.variant}: 远端 ${current.remoteFileCount}，本地 ${current.localFileCount}，缺失 ${current.missingFiles}，大小不一致 ${current.sizeMismatchFiles}`,
+      `[launcher] 文件校验结果 ${current.variant}: 远端 ${current.remoteFileCount}，本地 ${current.localFileCount}，缺失 ${current.missingFiles}，大小不一致 ${current.sizeMismatchFiles}`,
     );
 
     if (current.needsSync) {
@@ -533,14 +574,14 @@ async function handleForceCheckUpdate(): Promise<void> {
         reasons.push(`版本 ${current.localVersion ?? '无'} → ${current.remoteVersion}`);
       }
       const diffCount = current.missingFiles + current.sizeMismatchFiles;
-      toast(`发现更新: 共 ${diffCount} 个差异${reasons.length > 0 ? '，' + reasons.join('，') : ''}`);
+      toast(`校验发现 ${diffCount} 个差异${reasons.length > 0 ? '，' + reasons.join('，') : ''}`);
     } else {
       const btnUpdate = document.getElementById('launcher-btn-update') as HTMLElement;
       btnUpdate.style.display = 'none';
-      toast('所有文件已是最新，无需更新');
+      toast('所有文件校验通过，无需更新');
     }
   } catch (err) {
-    toast(`检测更新失败: ${err instanceof Error ? err.message : String(err)}`);
+    toast(`校验失败: ${err instanceof Error ? err.message : String(err)}`);
   } finally {
     btnCheck.textContent = origText;
     btnCheck.removeAttribute('disabled');

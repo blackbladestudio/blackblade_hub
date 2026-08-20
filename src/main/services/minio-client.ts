@@ -108,6 +108,24 @@ async function probeTimestamp(config: MinioConfig, prefix: string): Promise<Date
 // Build discovery — two-level non-recursive prefix listing
 // ---------------------------------------------------------------------------
 
+/** 带并发上限的 map，避免一次性对 MinIO 发起过多请求 */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await fn(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 function parseVersionLabel(label: string): { version: string; buildNumber: string } {
   const m = label.match(/^v?([\d.]+)(?:[-_](CL\w+))?$/);
   if (m) return { version: m[1], buildNumber: m[2] || '' };
@@ -140,36 +158,44 @@ export async function discoverBuilds(
     return { game: '', platform: 'Win64', builds: [] };
   }
 
-  const builds: BuildInfo[] = [];
+  const knownVariantPrefixes = variantPrefixes.filter((p) =>
+    KNOWN_VARIANTS.has(p.slice(normalizedPrefix.length).replace(/\/$/, '')),
+  );
 
-  for (const variantPrefix of variantPrefixes) {
-    const variantName = variantPrefix.slice(normalizedPrefix.length).replace(/\/$/, '');
-    if (!KNOWN_VARIANTS.has(variantName)) continue;
+  // Level 2: list version-level prefixes, e.g. "builds/Shipping/v1.0-CL12345/"
+  const versionPrefixLists = await Promise.all(
+    knownVariantPrefixes.map((variantPrefix) => listPrefixes(config, variantPrefix)),
+  );
 
-    // Level 2: list version-level prefixes, e.g. "builds/Shipping/v1.0-CL12345/"
-    const versionPrefixes = await listPrefixes(config, variantPrefix);
-
-    for (const versionPrefix of versionPrefixes) {
+  const candidates: Array<{ variantName: GameVariant; versionPrefix: string; versionLabel: string }> = [];
+  knownVariantPrefixes.forEach((variantPrefix, i) => {
+    const variantName = variantPrefix.slice(normalizedPrefix.length).replace(/\/$/, '') as GameVariant;
+    for (const versionPrefix of versionPrefixLists[i]) {
       const versionLabel = versionPrefix.slice(variantPrefix.length).replace(/\/$/, '');
       if (!versionLabel) continue;
-
-      const { version, buildNumber } = parseVersionLabel(versionLabel);
-
-      // Probe a single file to get an approximate build timestamp
-      const ts = await probeTimestamp(config, versionPrefix);
-
-      builds.push({
-        version,
-        buildNumber,
-        variant: variantName as GameVariant,
-        objectKey: versionPrefix,
-        size: 0,
-        timestamp: ts ? ts.toISOString() : new Date(0).toISOString(),
-        exeRelativePath,
-        isDirectory: true,
-      });
+      candidates.push({ variantName, versionPrefix, versionLabel });
     }
-  }
+  });
+
+  // Probe a single file per version to get an approximate build timestamp.
+  // 串行探测在版本数多时会累积成数秒的等待，这里做有上限的并发。
+  const timestamps = await mapWithConcurrency(candidates, 8, (c) =>
+    probeTimestamp(config, c.versionPrefix),
+  );
+
+  const builds: BuildInfo[] = candidates.map((c, i) => {
+    const { version, buildNumber } = parseVersionLabel(c.versionLabel);
+    return {
+      version,
+      buildNumber,
+      variant: c.variantName,
+      objectKey: c.versionPrefix,
+      size: 0,
+      timestamp: timestamps[i] ? timestamps[i]!.toISOString() : new Date(0).toISOString(),
+      exeRelativePath,
+      isDirectory: true,
+    };
+  });
 
   return { game: '', platform: 'Win64', builds };
 }

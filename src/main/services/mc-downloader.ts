@@ -58,18 +58,67 @@ function buildEndpointUrl(config: MinioConfig): string {
   return endpoint;
 }
 
+// 已写入 mc 配置的 alias 标识；凭据或端点变化时自然失效
+let configuredAliasKey = '';
+
+/**
+ * mc 命令失败时清掉缓存，让下次调用重新写入 alias。
+ * 否则 ~/.mc 配置被外部改动后，只能重启应用才能恢复。
+ */
+function invalidateAlias(): void {
+  configuredAliasKey = '';
+}
+
 async function setupAlias(mc: string, config: MinioConfig): Promise<void> {
   const endpoint = buildEndpointUrl(config);
+  const aliasKey = `${endpoint}|${config.accessKey}|${config.secretKey}`;
+  if (configuredAliasKey === aliasKey) return;
+
   return new Promise((resolve, reject) => {
     const args = ['alias', 'set', MC_ALIAS, endpoint, config.accessKey, config.secretKey];
     const child = spawn(mc, args, { windowsHide: true });
     let stderr = '';
     child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    child.on('error', (err) => reject(new Error(`mc alias set failed: ${err.message}`)));
     child.on('close', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`mc alias set failed: ${stderr}`));
+      if (code === 0) {
+        configuredAliasKey = aliasKey;
+        resolve();
+      } else {
+        reject(new Error(`mc alias set failed: ${stderr}`));
+      }
     });
   });
+}
+
+// Windows CreateProcess 的命令行上限约 32K。排除项过多时宁可少排除几个
+// （最坏结果是这些文件被重新下载），也不能让 mc 直接启动失败。
+const MAX_EXCLUDE_ARG_CHARS = 24000;
+
+function buildExcludeArgs(
+  patterns: string[] | undefined,
+  onLog?: (type: 'stdout' | 'stderr' | 'info' | 'error', msg: string) => void,
+): string[] {
+  if (!patterns || patterns.length === 0) return [];
+
+  const args: string[] = [];
+  let used = 0;
+  let dropped = 0;
+
+  for (const pattern of patterns) {
+    const cost = pattern.length + 12; // '--exclude' 加分隔符的粗略开销
+    if (used + cost > MAX_EXCLUDE_ARG_CHARS) {
+      dropped++;
+      continue;
+    }
+    args.push('--exclude', pattern);
+    used += cost;
+  }
+
+  if (dropped > 0) {
+    onLog?.('stderr', `[mc-mirror] 排除项过多，已忽略 ${dropped} 条；这些文件可能被重新下载`);
+  }
+  return args;
 }
 
 /**
@@ -113,7 +162,7 @@ export async function mcMirror(
   fs.mkdirSync(localDir, { recursive: true });
 
   return new Promise<void>((resolve, reject) => {
-    const excludeArgs = options.excludePatterns?.flatMap((p) => ['--exclude', p]) ?? [];
+    const excludeArgs = buildExcludeArgs(options.excludePatterns, options.onLog);
     const args = [
       'mirror',
       '--overwrite',
@@ -152,12 +201,22 @@ export async function mcMirror(
     const speedSamples: Array<{ time: number; bytes: number }> = [];
     const SPEED_WINDOW_MS = 5000;
 
+    // 已确认下载完成的文件不再重复 stat：几万文件的包体下，每秒全量扫描
+    // 既阻塞主进程事件循环，也会跟正在写盘的 mc 争抢磁盘 IO。
+    const completedPaths = new Set<string>();
+    let completedBytes = 0;
+
     const scanLocalProgress = (): { bytes: number; files: number } => {
       let bytes = 0;
       let files = 0;
 
       if (options.trackedFiles && options.trackedFiles.length > 0) {
+        bytes = completedBytes;
+        files = completedPaths.size;
+
         for (const file of options.trackedFiles) {
+          if (completedPaths.has(file.relativePath)) continue;
+
           const full = path.join(localDir, file.relativePath);
           let currentSize = 0;
           try {
@@ -171,6 +230,8 @@ export async function mcMirror(
           }
 
           if (currentSize === file.size) {
+            completedPaths.add(file.relativePath);
+            completedBytes += file.size;
             bytes += file.size;
             files++;
             continue;
@@ -351,6 +412,7 @@ export async function mcMirror(
       log('info', `[mc-mirror] closed: code=${code}, files=${Math.max(transferredCount, lastScannedFiles)}, bytes=${Math.max(transferredBytes, lastScannedBytes)}`);
 
       if (code !== 0 || errorMessages.length > 0) {
+        invalidateAlias();
         reject(new Error(errorMessages[0] || stderrText.trim() || `mc mirror 退出码: ${code}`));
         return;
       }
@@ -483,6 +545,7 @@ export async function mcListObjects(
         options.onLog?.('info', `[mc-ls] 完成: ${objects.length} 个文件，${formatBytes(totalBytes)}`);
         resolve(objects);
       } else {
+        invalidateAlias();
         reject(new Error(`mc ls 退出码: ${code}${stderr ? ' - ' + stderr.trim() : ''}`));
       }
     });
