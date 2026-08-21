@@ -9,6 +9,8 @@ export interface MinioConfig {
   secretKey: string;
   bucket: string;
   maxWorkers?: number;
+  /** 单个大文件的并发分片数，默认 8。单条连接跑不满内网带宽，分片并行是主要提速手段 */
+  downloadSegments?: number;
 }
 
 export interface LauncherConfig {

@@ -7,17 +7,24 @@ import type { GameVariant, DownloadProgress } from '../../types/launcher';
 import type { Readable } from 'stream';
 
 let activeMirrorProcess: ChildProcess | null = null;
-let activeStream: Readable | null = null;
+// 大文件分片下载会同时开多条流，中止时需要全部关掉
+const activeStreams = new Set<Readable>();
 
-export function setActiveStream(stream: Readable | null): void {
-  activeStream = stream;
+export function registerActiveStream(stream: Readable): void {
+  activeStreams.add(stream);
+}
+
+export function unregisterActiveStream(stream: Readable): void {
+  activeStreams.delete(stream);
 }
 
 export function abortMirror(): boolean {
   let aborted = false;
-  if (activeStream) {
-    activeStream.destroy();
-    activeStream = null;
+  if (activeStreams.size > 0) {
+    for (const stream of activeStreams) {
+      stream.destroy();
+    }
+    activeStreams.clear();
     aborted = true;
   }
   if (activeMirrorProcess && !activeMirrorProcess.killed) {

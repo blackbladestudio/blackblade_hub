@@ -13,7 +13,14 @@ import type {
 import { GAME_VARIANTS } from '../../types/launcher';
 import type { MinioConfig, LauncherConfig } from '../../types/config';
 import * as minio from './minio-client';
-import { mcMirror, mcListObjects, setActiveStream, type McListObject } from './mc-downloader';
+import {
+  mcMirror,
+  mcListObjects,
+  registerActiveStream,
+  unregisterActiveStream,
+  type McListObject,
+} from './mc-downloader';
+import type { Readable } from 'stream';
 
 const APP_NAME = 'BlackBlade Hub';
 const STATE_FILE = 'launcher-state.json';
@@ -22,6 +29,14 @@ const LARGE_FILE_THRESHOLD = 500 * 1024 * 1024; // 500MB
 const MTIME_TOLERANCE_MS = 2000;
 const DOWNLOAD_TMP_SUFFIX = '.downloading';
 const DOWNLOAD_META_SUFFIX = '.downloading.meta';
+/** 分片下载参数：单条 HTTP 连接跑不满内网带宽，按区间并发拉取 */
+const DEFAULT_DOWNLOAD_SEGMENTS = 8;
+const MAX_DOWNLOAD_SEGMENTS = 16;
+/** 小于此值不值得分片，连接建立开销反而占比更高 */
+const MIN_SEGMENT_SIZE = 64 * 1024 * 1024;
+/** 续传时每个未完成分片回退的字节数，用于覆盖可能未落盘的缓冲 */
+const RESUME_REWIND_BYTES = 4 * 1024 * 1024;
+const META_FLUSH_INTERVAL_MS = 2000;
 const activePids: Map<GameVariant, { pid: number; exePath: string }> = new Map();
 
 function getStatePath(): string {
@@ -341,7 +356,8 @@ async function installDirectoryBuild(
       const targetPath = path.join(installDir, file.relativePath);
       fs.mkdirSync(path.dirname(targetPath), { recursive: true });
 
-      emitLog(win, 'info', `[launcher] 流式下载: ${file.relativePath} (${formatBytes(file.size)})`);
+      const segments = resolveSegmentCount(file.size, minioConfig);
+      emitLog(win, 'info', `[launcher] 流式下载: ${file.relativePath} (${formatBytes(file.size)}，${segments} 分片并发)`);
 
       await streamDownloadFile(minioConfig, objectKey, targetPath, file.size, (bytes) => {
         emitOverallProgress(bytes);
@@ -397,21 +413,67 @@ interface DownloadMeta {
   objectKey: string;
   size: number;
   lastModified: string;
+  segmentCount: number;
+  /** 各分片已完成的字节数 */
+  progress: number[];
+}
+
+type DownloadMetaHeader = Omit<DownloadMeta, 'progress'>;
+
+interface SegmentBound {
+  /** 相对文件起始的绝对偏移 */
+  start: number;
+  /** 不含 */
+  end: number;
+}
+
+function resolveSegmentCount(totalSize: number, minioConfig: MinioConfig): number {
+  const configured = minioConfig.downloadSegments ?? DEFAULT_DOWNLOAD_SEGMENTS;
+  const capped = Math.max(1, Math.min(MAX_DOWNLOAD_SEGMENTS, Math.floor(configured)));
+  const bySize = Math.max(1, Math.floor(totalSize / MIN_SEGMENT_SIZE));
+  return Math.min(capped, bySize);
+}
+
+function computeSegmentBounds(totalSize: number, segmentCount: number): SegmentBound[] {
+  const base = Math.floor(totalSize / segmentCount);
+  const bounds: SegmentBound[] = [];
+  for (let i = 0; i < segmentCount; i++) {
+    const start = i * base;
+    bounds.push({ start, end: i === segmentCount - 1 ? totalSize : start + base });
+  }
+  return bounds;
 }
 
 /**
- * 残留的分片是否确属同一个远端对象。
- * 缺少 meta（老版本留下的分片）一律视为不可续传：无法确认来源时
- * 续传会把两个版本的内容拼接成一个大小正确但内容损坏的文件。
+ * 读取可续传的分片进度。meta 缺失、字段不符或临时文件尺寸不对时返回 null，
+ * 此时整个文件重下——无法确认来源时续传会拼出大小正确但内容损坏的文件。
  */
-function canResumeDownload(metaPath: string, expected: DownloadMeta): boolean {
+function loadResumeProgress(
+  metaPath: string,
+  tmpPath: string,
+  expected: DownloadMetaHeader,
+  bounds: SegmentBound[],
+): number[] | null {
   try {
+    if (fs.statSync(tmpPath).size !== expected.size) return null;
+
     const saved = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as Partial<DownloadMeta>;
-    return saved.objectKey === expected.objectKey
-      && saved.size === expected.size
-      && saved.lastModified === expected.lastModified;
+    if (saved.objectKey !== expected.objectKey) return null;
+    if (saved.size !== expected.size) return null;
+    if (saved.lastModified !== expected.lastModified) return null;
+    if (saved.segmentCount !== expected.segmentCount) return null;
+    if (!Array.isArray(saved.progress) || saved.progress.length !== bounds.length) return null;
+
+    return saved.progress.map((doneBytes, i) => {
+      const segmentSize = bounds[i].end - bounds[i].start;
+      if (typeof doneBytes !== 'number' || !Number.isFinite(doneBytes) || doneBytes <= 0) return 0;
+      // 已完成的分片其进度是在流结束后落的账，可以采信；
+      // 未完成的分片回退一段，避免采信尚未写入磁盘的缓冲
+      if (doneBytes >= segmentSize) return segmentSize;
+      return Math.max(0, doneBytes - RESUME_REWIND_BYTES);
+    });
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -438,69 +500,134 @@ async function streamDownloadFile(
 ): Promise<void> {
   const tmpPath = targetPath + DOWNLOAD_TMP_SUFFIX;
   const metaPath = targetPath + DOWNLOAD_META_SUFFIX;
-  const meta: DownloadMeta = {
+  const segmentCount = resolveSegmentCount(totalSize, minioConfig);
+  const bounds = computeSegmentBounds(totalSize, segmentCount);
+  const header: DownloadMetaHeader = {
     objectKey,
     size: totalSize,
     lastModified: remoteLastModified ?? '',
+    segmentCount,
   };
 
-  let existingBytes = 0;
-  try {
-    if (fs.existsSync(tmpPath)) {
-      if (canResumeDownload(metaPath, meta)) {
-        existingBytes = fs.statSync(tmpPath).size;
-        if (existingBytes >= totalSize) {
-          existingBytes = 0;
-          fs.unlinkSync(tmpPath);
-        }
-      } else {
-        existingBytes = 0;
-        fs.unlinkSync(tmpPath);
-      }
+  const resumed = loadResumeProgress(metaPath, tmpPath, header, bounds);
+  if (resumed === null) {
+    // 预分配到最终大小，各分片按绝对偏移写入；磁盘空间不足会在此立即暴露
+    let fd: number | undefined;
+    try {
+      fd = fs.openSync(tmpPath, 'w');
+      fs.ftruncateSync(fd, totalSize);
+    } finally {
+      if (fd !== undefined) fs.closeSync(fd);
     }
-  } catch {
-    existingBytes = 0;
   }
 
-  try {
-    fs.writeFileSync(metaPath, JSON.stringify(meta), 'utf-8');
-  } catch {
-    // 写不出 meta 就放弃续传能力，但不阻断本次下载
-  }
+  const done = resumed ?? new Array<number>(segmentCount).fill(0);
 
-  const stream = existingBytes > 0
-    ? await minio.getPartialObjectStream(minioConfig, objectKey, existingBytes)
-    : await minio.getObjectStream(minioConfig, objectKey);
-  setActiveStream(stream);
+  const writeMeta = (): void => {
+    try {
+      const meta: DownloadMeta = { ...header, progress: done };
+      fs.writeFileSync(metaPath, JSON.stringify(meta), 'utf-8');
+    } catch {
+      // 写不出 meta 只影响续传能力，不阻断本次下载
+    }
+  };
+  writeMeta();
 
-  const fileStream = fs.createWriteStream(tmpPath, existingBytes > 0 ? { flags: 'a' } : undefined);
-
-  let downloaded = existingBytes;
   let lastEmit = 0;
+  const emitFileProgress = (force = false): void => {
+    const now = Date.now();
+    if (!force && now - lastEmit < 500) return;
+    lastEmit = now;
+    onProgress(done.reduce((sum, n) => sum + n, 0));
+  };
+  emitFileProgress(true);
+
+  const metaTimer = setInterval(writeMeta, META_FLUSH_INTERVAL_MS);
+  const openStreams = new Set<Readable>();
+  let firstError: Error | null = null;
+  // 发生过越界写入时残留文件不可信，不能作为续传依据
+  let integrityCompromised = false;
+
+  // 任一分片失败就掐掉其余分片，避免继续占用带宽
+  const failAll = (err: Error): void => {
+    if (!firstError) firstError = err;
+    for (const stream of openStreams) stream.destroy();
+  };
+
+  const runSegment = async (index: number): Promise<void> => {
+    const { start, end } = bounds[index];
+    const offset = start + done[index];
+    const remaining = end - offset;
+    if (remaining <= 0) return;
+
+    const stream = await minio.getPartialObjectStream(minioConfig, objectKey, offset, remaining);
+    openStreams.add(stream);
+    registerActiveStream(stream);
+    const fileStream = fs.createWriteStream(tmpPath, { flags: 'r+', start: offset });
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        let received = 0;
+        // destroy 写入流才能让它触发 close，否则 pipe 的上游被销毁时下游会一直挂着
+        const fail = (err: Error): void => {
+          fileStream.destroy();
+          reject(err);
+        };
+
+        stream.on('data', (chunk: Buffer) => {
+          received += chunk.length;
+          done[index] += chunk.length;
+          if (received > remaining) {
+            // 远端没有遵守 Range，多出的字节会越界写进相邻分片
+            integrityCompromised = true;
+            stream.destroy();
+            fail(new Error('远端返回的数据超出请求区间'));
+            return;
+          }
+          emitFileProgress();
+        });
+        stream.on('error', fail);
+        stream.on('close', () => {
+          if (received < remaining) fail(new Error('下载已中断'));
+        });
+
+        fileStream.on('error', reject);
+        // 用 close 而不是 finish：close 时文件描述符已经释放，
+        // 否则后续 rename 会撞上仍未关闭的句柄
+        fileStream.on('close', () => {
+          if (received === remaining) resolve();
+          else reject(new Error('下载已中断'));
+        });
+
+        stream.pipe(fileStream);
+      });
+    } finally {
+      openStreams.delete(stream);
+      unregisterActiveStream(stream);
+    }
+  };
 
   try {
-    await new Promise<void>((resolve, reject) => {
-      stream.on('data', (chunk: Buffer) => {
-        downloaded += chunk.length;
-        const now = Date.now();
-        if (now - lastEmit > 500) {
-          onProgress(downloaded);
-          lastEmit = now;
-        }
-      });
-      stream.on('close', () => {
-        if (downloaded < totalSize) {
-          fileStream.destroy();
-          reject(new Error('下载已中断'));
-        }
-      });
-      stream.pipe(fileStream);
-      fileStream.on('finish', resolve);
-      stream.on('error', (err) => { fileStream.destroy(); reject(err); });
-      fileStream.on('error', reject);
-    });
+    // allSettled 确保所有分片都收尾后才继续，避免残留的写入与后续 rename 打架
+    await Promise.allSettled(
+      bounds.map((_, i) =>
+        runSegment(i).catch((err) => failAll(err instanceof Error ? err : new Error(String(err)))),
+      ),
+    );
+    if (firstError) throw firstError;
 
-    onProgress(totalSize);
+    // 文件是预分配出来的，尺寸永远等于 totalSize，因此真正的完整性依据是
+    // 各分片累计收到的字节数，尺寸校验只作兜底。
+    const receivedTotal = done.reduce((sum, n) => sum + n, 0);
+    if (receivedTotal !== totalSize) {
+      throw new Error(`下载字节数不符: 期望 ${totalSize}，实际 ${receivedTotal}`);
+    }
+    const finalSize = fs.statSync(tmpPath).size;
+    if (finalSize !== totalSize) {
+      throw new Error(`下载结果大小不符: 期望 ${totalSize}，实际 ${finalSize}`);
+    }
+
+    emitFileProgress(true);
 
     if (fs.existsSync(targetPath)) {
       fs.unlinkSync(targetPath);
@@ -508,8 +635,17 @@ async function streamDownloadFile(
     fs.renameSync(tmpPath, targetPath);
     applyRemoteMtime(targetPath, remoteLastModified);
     try { fs.unlinkSync(metaPath); } catch { /* ignore */ }
+  } catch (err) {
+    if (integrityCompromised) {
+      // 可能存在越界写入，残留内容无法信任，整体丢弃后重下
+      try { fs.unlinkSync(metaPath); } catch { /* ignore */ }
+      try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+    } else {
+      writeMeta();
+    }
+    throw err;
   } finally {
-    setActiveStream(null);
+    clearInterval(metaTimer);
   }
 }
 

@@ -34,9 +34,18 @@ export async function getObjectStream(config: MinioConfig, key: string): Promise
   return c.getObject(config.bucket, key) as unknown as Promise<Readable>;
 }
 
-export async function getPartialObjectStream(config: MinioConfig, key: string, offset: number): Promise<Readable> {
+/** length 省略时读到对象结尾 */
+export async function getPartialObjectStream(
+  config: MinioConfig,
+  key: string,
+  offset: number,
+  length?: number,
+): Promise<Readable> {
   const c = ensureClient(config);
-  return c.getPartialObject(config.bucket, key, offset) as unknown as Promise<Readable>;
+  const stream = length === undefined
+    ? c.getPartialObject(config.bucket, key, offset)
+    : c.getPartialObject(config.bucket, key, offset, length);
+  return stream as unknown as Promise<Readable>;
 }
 
 // ---------------------------------------------------------------------------
