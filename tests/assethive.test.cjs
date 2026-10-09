@@ -5,6 +5,7 @@ const path = require('node:path');
 const {
   compareVersions,
   getExpectedAssetHiveExecutable,
+  getRegisteredAssetHiveExecutable,
   isTrustedAssetHivePath,
   normalizeVersion,
   parseChecksumFile,
@@ -47,7 +48,26 @@ test('compares semantic release versions', () => {
 test('selects one exact stable release asset pair', () => {
   const selected = selectReleaseAssets(release());
   assert.equal(selected.version, '1.2.3');
-  assert.equal(selected.msiName, 'AssetHive-1.2.3-Windows.msi');
+  assert.equal(selected.installerName, 'AssetHive-1.2.3-Windows.msi');
+  assert.equal(selected.installerType, 'msi');
+});
+
+test('selects the Inno Setup EXE and requires its own checksum', () => {
+  const payload = release();
+  const name = 'AssetHive-1.2.3-setup-win64.exe';
+  const exe = { name, browser_download_url: `https://github.com/blackbladestudio/AssetHive/releases/download/v1.2.3/${name}` };
+  payload.assets.push(exe, { name: `${name}.sha256`, browser_download_url: `${exe.browser_download_url}.sha256` });
+  assert.equal(selectReleaseAssets(payload).installerType, 'inno');
+  payload.assets.pop();
+  assert.throws(() => selectReleaseAssets(payload), /one exact/);
+});
+
+test('resolves per-user and custom installation paths from the registry', () => {
+  assert.equal(getRegisteredAssetHiveExecutable('D:\\美术工具\\AssetHive\\', ''), 'D:\\美术工具\\AssetHive\\AssetHive.exe');
+  assert.equal(getRegisteredAssetHiveExecutable('', '"C:\\Users\\Artist\\AppData\\Local\\Programs\\AssetHive\\AssetHive.exe",0'), 'C:\\Users\\Artist\\AppData\\Local\\Programs\\AssetHive\\AssetHive.exe');
+  assert.equal(getRegisteredAssetHiveExecutable('', 'C:\\Other.exe'), null);
+  assert.equal(getRegisteredAssetHiveExecutable('relative\\path', ''), null);
+  assert.equal(getRegisteredAssetHiveExecutable('\\\\server\\share', ''), null);
 });
 
 test('rejects prereleases, duplicate assets and foreign URLs', () => {

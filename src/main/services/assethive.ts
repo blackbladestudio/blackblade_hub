@@ -19,8 +19,9 @@ export interface GitHubReleasePayload {
 
 export interface AssetHiveReleaseAssets {
   version: string;
-  msiName: string;
-  msiUrl: string;
+  installerName: string;
+  installerUrl: string;
+  installerType: 'inno' | 'msi';
   checksumName: string;
   checksumUrl: string;
   releaseUrl: string;
@@ -52,19 +53,22 @@ export function selectReleaseAssets(payload: GitHubReleasePayload): AssetHiveRel
     throw new Error('Latest AssetHive release has an invalid version tag');
   }
   const assets = Array.isArray(payload.assets) ? (payload.assets as GitHubReleaseAsset[]) : [];
-  const msiName = `AssetHive-${version}-Windows.msi`;
-  const checksumName = `${msiName}.sha256`;
-  const msiMatches = assets.filter((asset) => asset.name === msiName);
+  const exeName = `AssetHive-${version}-setup-win64.exe`;
+  const installerType = assets.some((asset) => asset.name === exeName) ? 'inno' : 'msi';
+  const installerName = installerType === 'inno' ? exeName : `AssetHive-${version}-Windows.msi`;
+  const checksumName = `${installerName}.sha256`;
+  const installerMatches = assets.filter((asset) => asset.name === installerName);
   const checksumMatches = assets.filter((asset) => asset.name === checksumName);
-  if (msiMatches.length !== 1 || checksumMatches.length !== 1) {
-    throw new Error('Latest AssetHive release must contain one exact MSI/checksum pair');
+  if (installerMatches.length !== 1 || checksumMatches.length !== 1) {
+    throw new Error('Latest AssetHive release must contain one exact installer/checksum pair');
   }
-  const msiUrl = validateReleaseUrl(msiMatches[0].browser_download_url);
+  const installerUrl = validateReleaseUrl(installerMatches[0].browser_download_url);
   const checksumUrl = validateReleaseUrl(checksumMatches[0].browser_download_url);
   return {
     version,
-    msiName,
-    msiUrl,
+    installerName,
+    installerUrl,
+    installerType,
     checksumName,
     checksumUrl,
     releaseUrl: typeof payload.html_url === 'string' ? payload.html_url : '',
@@ -91,6 +95,16 @@ export function isTrustedAssetHivePath(candidate: string, programFilesRoot: stri
   if (!candidate || !programFilesRoot) return false;
   const expected = getExpectedAssetHiveExecutable(programFilesRoot);
   return path.resolve(candidate).toLowerCase() === expected.toLowerCase();
+}
+
+export function getRegisteredAssetHiveExecutable(installLocation: unknown, displayIcon: unknown): string | null {
+  const location = typeof installLocation === 'string' ? installLocation.trim() : '';
+  const icon = typeof displayIcon === 'string' ? displayIcon.trim().replace(/,\s*-?\d+$/, '').replace(/^"(.*)"$/, '$1') : '';
+  const candidate = location ? path.win32.join(location, 'AssetHive.exe') : icon;
+  if (!/^[a-z]:\\/i.test(candidate) || path.win32.basename(candidate).toLowerCase() !== 'assethive.exe') {
+    return null;
+  }
+  return path.win32.normalize(candidate);
 }
 
 export function parseChecksumFile(content: string, expectedFileName: string): string {

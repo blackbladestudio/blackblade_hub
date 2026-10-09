@@ -17,8 +17,8 @@ import {
   ASSETHIVE_REPOSITORY,
   compareVersions,
   getExpectedAssetHiveExecutable,
+  getRegisteredAssetHiveExecutable,
   type GitHubReleasePayload,
-  isTrustedAssetHivePath,
   normalizeVersion,
   selectReleaseAssets,
 } from '../services/assethive';
@@ -29,40 +29,60 @@ function getProgramFilesRoot(): string {
   return process.env.ProgramW6432 || process.env.ProgramFiles || 'C:\\Program Files';
 }
 
-async function queryInstalledVersion(): Promise<string | null> {
-  const command = `$items = @(
+interface InstalledAssetHive {
+  version: string;
+  installPath: string | null;
+}
+
+async function queryInstallations(): Promise<InstalledAssetHive[]> {
+  const command = `[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding;
+  $items = @(
     Get-ItemProperty 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' -ErrorAction SilentlyContinue
     Get-ItemProperty 'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' -ErrorAction SilentlyContinue
-  ) | Where-Object { $_.DisplayName -eq '${ASSETHIVE_PRODUCT_NAME}' -and $_.Publisher -eq '${ASSETHIVE_PUBLISHER}' };
-  $item = $items | Select-Object -First 1;
-  if ($item) { [Console]::Out.Write([string]$item.DisplayVersion) }`;
+    Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' -ErrorAction SilentlyContinue
+  ) | Where-Object { $_.DisplayName -match '^${ASSETHIVE_PRODUCT_NAME}( \\d+\\.\\d+\\.\\d+)?$' -and $_.Publisher -eq '${ASSETHIVE_PUBLISHER}' };
+  [Console]::Out.Write((ConvertTo-Json -InputObject @($items | Select-Object DisplayVersion, InstallLocation, DisplayIcon) -Compress))`;
   try {
     const { stdout } = await execFileAsync(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-Command', command],
       { encoding: 'utf8', timeout: 5000, windowsHide: true },
     );
-    return normalizeVersion(stdout.trim());
+    const items = JSON.parse(stdout.trim()) as Array<Record<string, unknown>>;
+    return items.flatMap((item) => {
+      const version = normalizeVersion(item.DisplayVersion);
+      return version ? [{
+        version,
+        installPath: getRegisteredAssetHiveExecutable(item.InstallLocation, item.DisplayIcon),
+      }] : [];
+    }).sort((left, right) => compareVersions(right.version, left.version));
   } catch {
-    return null;
+    return [];
   }
 }
 
 export async function getAssetHiveStatus(): Promise<AssetHiveStatus> {
   const programFilesRoot = getProgramFilesRoot();
-  const installPath = getExpectedAssetHiveExecutable(programFilesRoot);
-  const executableExists = fs.existsSync(installPath) && fs.statSync(installPath).isFile();
-  const version = await queryInstalledVersion();
+  const fallbackPath = getExpectedAssetHiveExecutable(programFilesRoot);
+  const installations = await queryInstallations();
+  const isExecutable = (candidate: string): boolean => {
+    try {
+      return fs.statSync(candidate).isFile();
+    } catch {
+      return false;
+    }
+  };
+  const installed = installations.find((item) => isExecutable(item.installPath || fallbackPath));
 
-  if (executableExists && version && isTrustedAssetHivePath(installPath, programFilesRoot)) {
-    return { state: 'ready', isInstalled: true, installPath, version };
+  if (installed) {
+    return { state: 'ready', isInstalled: true, installPath: installed.installPath || fallbackPath, version: installed.version };
   }
-  if (executableExists || version) {
+  if (isExecutable(fallbackPath) || installations.length > 0) {
     return {
       state: 'damaged',
       isInstalled: false,
-      installPath: executableExists ? installPath : null,
-      version,
+      installPath: isExecutable(fallbackPath) ? fallbackPath : null,
+      version: installations[0]?.version || null,
       error: 'AssetHive installation is incomplete. Reinstall or repair the application.',
     };
   }
@@ -140,11 +160,9 @@ function installAssetHive(getMainWindow: () => BrowserWindow | null): Promise<Sc
 
 export async function launchAssetHive(): Promise<LaunchResult> {
   const status = await getAssetHiveStatus();
-  const programFilesRoot = getProgramFilesRoot();
   if (
     status.state !== 'ready'
     || !status.installPath
-    || !isTrustedAssetHivePath(status.installPath, programFilesRoot)
     || !fs.existsSync(status.installPath)
   ) {
     return { success: false, error: status.error || 'AssetHive is not installed correctly.' };

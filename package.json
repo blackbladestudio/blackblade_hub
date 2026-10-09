@@ -1,6 +1,6 @@
 {
   "name": "blackblade-hub",
-  "version": "1.9.6",
+  "version": "1.9.7",
   "author": "BlackBlade",
   "description": "BlackBlade Hub",
   "main": "dist/main/index.js",
@@ -27,9 +27,7 @@
       {
         "from": "tools",
         "to": "tools",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       },
       {
         "from": "assets",
@@ -41,7 +39,9 @@
       {
         "from": "bin",
         "to": "bin",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
