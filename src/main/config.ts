@@ -66,6 +66,10 @@ export function loadConfig(): AppConfig {
       const userCfg = JSON.parse(raw);
       const merged = { ...DEFAULT_CONFIG, ...defaultCfg, ...userCfg };
       merged.minio = { ...DEFAULT_CONFIG.minio, ...(defaultCfg as any).minio, ...userCfg.minio };
+      // 将已保存的旧默认地址迁移到新服务器，保留其他自定义地址。
+      if (typeof merged.minio.endpoint === 'string' && merged.minio.endpoint.replace(/\/+$/, '') === 'http://10.248.15.20:9000') {
+        merged.minio.endpoint = (defaultCfg as any).minio?.endpoint ?? DEFAULT_CONFIG.minio.endpoint;
+      }
       merged.launcher = { ...DEFAULT_CONFIG.launcher, ...(defaultCfg as any).launcher, ...userCfg.launcher };
       merged.perforce = { ...DEFAULT_CONFIG.perforce, ...(defaultCfg as any).perforce, ...userCfg.perforce };
       // 门户地址为应用级配置，始终使用 config.default.json 的值，不允许用户覆盖

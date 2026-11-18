@@ -25,7 +25,7 @@ let config: AppConfig = {
   studioChat: '',
   studioHue: '',
   envScript: '',
-  minio: { endpoint: 'http://10.248.15.20:9000', accessKey: '', secretKey: '', bucket: 'builds-client' },
+  minio: { endpoint: 'http://10.248.15.21:9000', accessKey: '', secretKey: '', bucket: 'builds-client' },
   launcher: { installDir: '', prefix: '', exeRelativePath: '' },
 };
 

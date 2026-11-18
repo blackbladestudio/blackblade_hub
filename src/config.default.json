@@ -15,7 +15,7 @@
   "envScript": "tools/setup_agent_environment.ps1",
   "hordeAgentScript": "tools/install_horde_agent.ps1",
   "minio": {
-    "endpoint": "http://10.248.15.20:9000",
+    "endpoint": "http://10.248.15.21:9000",
     "accessKey": "guest",
     "secretKey": "12345678",
     "bucket": "builds-client"

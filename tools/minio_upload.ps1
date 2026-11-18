@@ -5,8 +5,8 @@
     Designed to be called from Jenkins after a successful build.
 
 .PARAMETER ServerUrl
-    MinIO S3 API URL, e.g. http://10.248.15.20:9000
-    Default: http://10.248.15.20:9000/
+    MinIO S3 API URL, e.g. http://10.248.15.21:9000
+    Default: http://10.248.15.21:9000/
 
 .PARAMETER AccessKey
     MinIO access key (root user or service account)
@@ -36,7 +36,7 @@
 #>
 
 param(
-    [Parameter(Mandatory=$false)][string] $ServerUrl = "http://10.248.15.20:9000/",
+    [Parameter(Mandatory=$false)][string] $ServerUrl = "http://10.248.15.21:9000/",
     [Parameter(Mandatory)][string] $AccessKey,
     [Parameter(Mandatory)][string] $SecretKey,
     [Parameter(Mandatory)][string] $Bucket,
