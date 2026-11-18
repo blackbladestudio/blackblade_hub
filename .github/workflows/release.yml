@@ -1,0 +1,65 @@
+name: Release Studio Hub
+run-name: Release ${{ inputs.tag || github.ref_name }}
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag, e.g. v1.9.8
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: Validate tag format
+        run: |
+          if ($env:RELEASE_TAG -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Expected a tag such as v1.9.8' }
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($env:RELEASE_TAG -cne "v$version") { throw 'Tag does not match package.json' }
+      - run: npm ci
+      - run: npm run dist -- --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: dist-package/BlackBlade Hub Setup *.exe
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: installer
+      - run: |
+          installer="BlackBlade Hub Setup ${RELEASE_TAG#v}.exe"
+          test -s "$installer"
+          gh release create "$RELEASE_TAG" "$installer" --verify-tag --generate-notes --title "Studio Hub ${RELEASE_TAG#v}"
