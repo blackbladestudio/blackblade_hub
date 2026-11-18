@@ -344,3 +344,9 @@ signtool sign /f cert.pfx /p PASSWORD /tr http://timestamp.example.com/tsa /td S
 
 **Q: tools/ 脚本在打包后无法执行？**
 `tools/` 通过 `extraResources` 打包到 `resources/tools/`，不在 asar 内。`resolvePath()` 会在 `app.isPackaged` 时自动切换到 `process.resourcesPath`。
+
+### Hub 自动更新
+
+Hub 从 GitHub Release 检测稳定版本并下载 Windows 安装包。访问私有仓库时，在启动 Hub 前设置用户环境变量 `STUDIO_HUB_GITHUB_TOKEN`，使用仅有 Hub 仓库 Contents: Read 权限的个人令牌。设置后请彻底退出并重新启动 Hub。令牌不写入项目配置，也不随安装包分发。
+
+旧版 Hub 仍使用内网更新地址，首次切换需要手动安装包含新更新器的版本。

@@ -11,7 +11,7 @@ export function registerUpdaterHandlers(): void {
   ipcMain.handle('updater:download-and-install', async () => {
     const status = await autoUpdater.checkForUpdates();
     if (!status.available) {
-      return { success: false, error: '没有可用更新' };
+      return { success: false, error: status.error ?? '没有可用更新' };
     }
     try {
       await autoUpdater.downloadAndInstall(status);
