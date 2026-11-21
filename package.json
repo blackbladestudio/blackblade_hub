@@ -1,6 +1,6 @@
 {
   "name": "blackblade-hub",
-  "version": "1.9.9",
+  "version": "2.0.0",
   "author": "BlackBlade",
   "description": "BlackBlade Hub",
   "main": "dist/main/index.js",
