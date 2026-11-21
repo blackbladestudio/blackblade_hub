@@ -8,6 +8,7 @@ import { initConfigModal, prefillConfigForm } from './modules/config-modal';
 import { initLogPanel, appendLog } from './modules/log-panel';
 import { initLauncher } from './modules/launcher';
 import { initAiSites, refreshStudioChatUrl } from './modules/ai-sites';
+import { initBuilder } from './modules/builder';
 
 declare global {
   interface Window {
@@ -75,6 +76,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   initLaunch(getConfig, setConfigAndRender);
   initStudioPortal(getConfig);
+  initBuilder();
   initPipeline(getConfig);
   initToolbox();
   initConfigModal(getConfig, setConfigAndRender);

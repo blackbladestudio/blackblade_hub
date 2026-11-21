@@ -47,6 +47,13 @@ export interface AssetHiveReleaseStatus {
   error?: string;
 }
 
+export interface BuilderSite {
+  slug: string;
+  title: string;
+  author: string;
+  iconUrl: string | null;
+}
+
 export interface CliOutputMessage {
   type: 'stdout' | 'stderr' | 'info' | 'error' | 'exit';
   msg: string;
@@ -87,6 +94,8 @@ export interface StudioHubAPI {
   getConfig(): Promise<AppConfig>;
   saveConfig(config: AppConfig): Promise<boolean>;
   openUrl(url: string): Promise<boolean>;
+  listBuilderSites(): Promise<BuilderSite[]>;
+  openBuilderSite(slug: string): Promise<void>;
   runScript(scriptPath: string): Promise<ScriptResult>;
   launchApp(appPath: string): Promise<LaunchResult>;
   selectFile(defaultPath?: string): Promise<string | null>;

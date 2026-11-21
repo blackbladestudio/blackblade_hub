@@ -111,7 +111,7 @@
     </div>
   </section>
 
-  <!-- STUDIO WEB（主页 / Chat / Hue） -->
+  <!-- 工作室入口 -->
   <section id="studio-portal-zone">
     <div class="section-label">STUDIO</div>
     <div class="pipeline-grid">
@@ -141,6 +141,15 @@
         </div>
         <div class="pipeline-status-dot" id="dot-studio-hue"></div>
       </div>
+
+      <button type="button" class="pipeline-card builder-entry" id="card-builder" aria-controls="builder-page">
+        <span class="pipeline-card-icon builder-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2.75" y="3.75" width="14.5" height="12.5" rx="2"/><path d="M3 7.75h14m-7 0v8"/>
+          </svg>
+        </span>
+        <span class="pipeline-card-info"><span class="pipeline-card-name">BUILDER</span><span class="pipeline-card-desc">工作室内部站点</span></span>
+      </button>
 
       <div class="pipeline-card" id="card-bb-cli">
         <div class="pipeline-card-icon cli">⚡</div>
@@ -271,6 +280,23 @@
   </section>
 
 </main>
+
+<section id="builder-page" class="page-hidden" aria-labelledby="builder-title">
+  <div class="page-header">
+    <button type="button" class="page-back" id="builder-back" aria-label="返回 Hub 首页">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M10 12L6 8L10 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <h1 class="page-title" id="builder-title">BUILDER</h1>
+    <div class="builder-tools">
+      <input type="search" id="builder-search" placeholder="搜索站点或作者" aria-label="搜索站点或作者">
+      <button type="button" class="page-back" id="builder-refresh">刷新</button>
+    </div>
+  </div>
+  <p id="builder-status" role="status"></p>
+  <div class="builder-grid" id="builder-grid" aria-label="已发布站点"></div>
+</section>
 
 <!-- CLI Terminal Page -->
 <div id="cli-page" class="page-hidden">
