@@ -77,7 +77,7 @@ export function initBuilder(): void {
   }
 
   entry.addEventListener('click', () => {
-    home.classList.add('page-hidden');
+    home.inert = true;
     page.classList.remove('page-hidden');
     search.value = '';
     back.focus();
@@ -86,8 +86,8 @@ export function initBuilder(): void {
   back.addEventListener('click', () => {
     request++;
     page.classList.add('page-hidden');
-    home.classList.remove('page-hidden');
-    entry.focus();
+    home.inert = false;
+    entry.focus({ preventScroll: true });
   });
   refresh.addEventListener('click', () => void load());
   search.addEventListener('input', draw);
