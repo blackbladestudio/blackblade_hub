@@ -7,6 +7,7 @@ const api: StudioHubAPI = {
   openUrl: (url) => ipcRenderer.invoke('open-url', url),
   listBuilderSites: () => ipcRenderer.invoke('builder:list-sites'),
   openBuilderSite: (slug) => ipcRenderer.invoke('builder:open-site', slug),
+  openBuilderWorkspace: (action) => ipcRenderer.invoke('builder:open-workspace', action),
   runScript: (scriptPath) => ipcRenderer.invoke('run-script', scriptPath),
   launchApp: (appPath) => ipcRenderer.invoke('launch-app', appPath),
   selectFile: (defaultPath) => ipcRenderer.invoke('select-file', defaultPath),

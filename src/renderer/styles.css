@@ -677,7 +677,10 @@ main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 #builder-page .page-header { gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 #builder-back { display: grid; place-items: center; padding-inline: 10px; }
 #builder-title { margin: 0; }
-.builder-tools { display: flex; align-items: center; gap: 8px; margin-inline-start: auto; }
+.builder-tools { display: flex; align-items: center; gap: 8px; margin-inline-start: auto; flex-wrap: wrap; }
+.builder-tools button { white-space: nowrap; }
+.builder-tools .builder-publish { border-color: var(--gold); color: var(--text); background: var(--gold-dim); }
+.builder-tools .builder-publish:hover { border-color: var(--gold); color: var(--gold); }
 #builder-search {
   width: min(240px, 44vw); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border);
   background: var(--surface); color: var(--text); font: inherit;

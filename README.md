@@ -8,7 +8,7 @@
 |------|------|------|
 | **Launch** | 启动游戏 / 编辑器 | 配置 exe 路径后一键启动 |
 | **Launch** | 生产工具 | 自定义工具列表，快速启动任意 exe / 脚本 |
-| **Studio** | BUILDER | 浏览、搜索已发布的工作室站点，点击卡片在默认浏览器打开 |
+| **Studio** | BUILDER | 浏览、搜索已发布站点；在默认浏览器打开站点、发布新站点或管理自己的站点 |
 | **Pipeline** | Jenkins | 打开 Jenkins Web UI |
 | **Pipeline** | Horde | 打开 Horde Web UI |
 | **Pipeline** | UGS | 打开 UGS（支持 URL 或本地路径） |

@@ -1,4 +1,4 @@
-import type { BuilderSite } from '../../types/ipc';
+import type { BuilderSite, BuilderWorkspaceAction } from '../../types/ipc';
 import { toast } from '../utils';
 
 export function initBuilder(): void {
@@ -12,6 +12,7 @@ export function initBuilder(): void {
   const status = document.getElementById('builder-status')!;
   let sites: BuilderSite[] | null = null;
   let request = 0;
+  let refreshOnReturn = false;
 
   function card(site: BuilderSite): HTMLButtonElement {
     const button = document.createElement('button');
@@ -91,4 +92,21 @@ export function initBuilder(): void {
   });
   refresh.addEventListener('click', () => void load());
   search.addEventListener('input', draw);
+
+  async function openWorkspace(action: BuilderWorkspaceAction): Promise<void> {
+    refreshOnReturn = true;
+    try {
+      await window.studioHub.openBuilderWorkspace(action);
+    } catch {
+      refreshOnReturn = false;
+      toast('无法打开 BUILDER，请重试。');
+    }
+  }
+  document.getElementById('builder-publish')!.addEventListener('click', () => void openWorkspace('publish'));
+  document.getElementById('builder-manage')!.addEventListener('click', () => void openWorkspace('mine'));
+  window.addEventListener('focus', () => {
+    if (!refreshOnReturn) return;
+    refreshOnReturn = false;
+    if (!page.classList.contains('page-hidden')) void load();
+  });
 }

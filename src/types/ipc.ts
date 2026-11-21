@@ -54,6 +54,8 @@ export interface BuilderSite {
   iconUrl: string | null;
 }
 
+export type BuilderWorkspaceAction = 'publish' | 'mine';
+
 export interface CliOutputMessage {
   type: 'stdout' | 'stderr' | 'info' | 'error' | 'exit';
   msg: string;
@@ -96,6 +98,7 @@ export interface StudioHubAPI {
   openUrl(url: string): Promise<boolean>;
   listBuilderSites(): Promise<BuilderSite[]>;
   openBuilderSite(slug: string): Promise<void>;
+  openBuilderWorkspace(action: BuilderWorkspaceAction): Promise<void>;
   runScript(scriptPath: string): Promise<ScriptResult>;
   launchApp(appPath: string): Promise<LaunchResult>;
   selectFile(defaultPath?: string): Promise<string | null>;
